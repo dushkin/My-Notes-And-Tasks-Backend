@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "1.0.0",
-  "commitMessage": "First version",
+  "version": "1.1.0",
+  "commitMessage": "Add mongodb, email-pw login api's and swagger support",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -17,7 +17,10 @@
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.14.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

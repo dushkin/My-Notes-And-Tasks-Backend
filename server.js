@@ -1,36 +1,49 @@
-// server.js
-require('dotenv').config(); // Load environment variables from .env file
+// server.js (Updated)
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const connectDB = require('./config/db');
+const authRoutes = require('./routes/authRoutes');
+const swaggerUi = require('swagger-ui-express'); // Import swagger-ui-express
+const swaggerSpec = require('./config/swagger'); // Import your swagger config
+
+// --- Connect to Database ---
+connectDB();
 
 const app = express();
-const PORT = process.env.PORT || 5001; // Use environment variable or default
+const PORT = process.env.PORT || 5001;
 
 // --- Middleware ---
-// Enable CORS for requests from your frontend origin
-// TODO: Configure CORS more restrictively for production
-app.use(cors());
-// Parse JSON request bodies
+app.use(cors(/* Configure options for production */));
 app.use(express.json());
-// Parse URL-encoded request bodies
 app.use(express.urlencoded({ extended: true }));
 
-// --- Basic Routes (Placeholder) ---
-app.get('/', (req, res) => {
-    res.send('Notes & Tasks Backend API');
+// --- Swagger Documentation Route ---
+// This route should ideally be placed *before* your main API routes if '/api' is your base
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  // Optional: Custom options for Swagger UI
+  // explorer: true, // Enables the search bar
+  // customCssUrl: '/custom-swagger.css' // Path to custom CSS
+}));
+
+// --- API Routes ---
+app.get('/api', (req, res) => {
+  res.send('Notes & Tasks Backend API');
 });
 
-// TODO: Add Authentication routes (/api/auth/register, /api/auth/login)
+// Mount Authentication routes (under /api base path specified in swagger config)
+app.use('/api/auth', authRoutes);
+
 // TODO: Add Protected routes (e.g., /api/notes, /api/tasks)
 
-// --- Error Handling Middleware (Basic) ---
+// --- Error Handling Middleware ---
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).send({ error: 'Something went wrong!' });
+  console.error(err.stack);
+  res.status(500).send({ error: 'Something went wrong!' });
 });
 
 // --- Start Server ---
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    // TODO: Add Database connection logic here
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Swagger Docs available at http://localhost:${PORT}/api-docs`); // Log docs URL
 });
