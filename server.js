@@ -1,11 +1,12 @@
-// server.js (Updated)
+// server.js (Relevant parts updated)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
-const swaggerUi = require('swagger-ui-express'); // Import swagger-ui-express
-const swaggerSpec = require('./config/swagger'); // Import your swagger config
+const itemsRoutes = require('./routes/itemsRoutes');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
 
 // --- Connect to Database ---
 connectDB();
@@ -15,26 +16,23 @@ const PORT = process.env.PORT || 5001;
 
 // --- Middleware ---
 app.use(cors(/* Configure options for production */));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' })); // Increase JSON body limit if trees might be large
+app.use(express.urlencoded({ limit: '10mb', extended: true })); // Increase URL-encoded limit too
+
 
 // --- Swagger Documentation Route ---
-// This route should ideally be placed *before* your main API routes if '/api' is your base
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  // Optional: Custom options for Swagger UI
-  // explorer: true, // Enables the search bar
-  // customCssUrl: '/custom-swagger.css' // Path to custom CSS
-}));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // --- API Routes ---
 app.get('/api', (req, res) => {
   res.send('Notes & Tasks Backend API');
 });
 
-// Mount Authentication routes (under /api base path specified in swagger config)
+// Mount Authentication routes
 app.use('/api/auth', authRoutes);
+// Mount Items routes (protected by middleware defined within itemsRoutes.js)
+app.use('/api/items', itemsRoutes);
 
-// TODO: Add Protected routes (e.g., /api/notes, /api/tasks)
 
 // --- Error Handling Middleware ---
 app.use((err, req, res, next) => {
@@ -45,5 +43,5 @@ app.use((err, req, res, next) => {
 // --- Start Server ---
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Swagger Docs available at http://localhost:${PORT}/api-docs`); // Log docs URL
+  console.log(`Swagger Docs available at http://localhost:${PORT}/api-docs`);
 });

@@ -1,0 +1,330 @@
+{
+	"info": {
+		"_postman_id": "YOUR_NEW_COLLECTION_ID",
+		"name": "Notes & Tasks Backend API (CRUD)",
+		"description": "Collection for testing the Notes & Tasks backend API with CRUD operations for items.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "YOUR_EXPORTER_ID"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"description": "User Authentication Endpoints",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"testcrud@example.com\",\n    \"password\": \"password123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"register"
+							]
+						},
+						"description": "Creates a new user account with the provided email and password."
+					},
+					"response": []
+				},
+				{
+					"name": "Login User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// Automatically grab the token from the response and set it as a collection variable",
+									"try {",
+									"    let jsonData = pm.response.json();",
+									"    if (jsonData.token) {",
+									"        pm.collectionVariables.set(\"authToken\", jsonData.token);",
+									"        console.log(\"Auth token set.\");",
+									"    } else {",
+									"        console.log(\"Token not found in response.\");",
+									"         pm.collectionVariables.unset(\"authToken\");",
+									"    }",
+									"} catch (e) {",
+									"    console.log(\"Could not parse response or find token: \" + e);",
+									"    pm.collectionVariables.unset(\"authToken\");",
+									"}"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"testcrud@example.com\",\n    \"password\": \"password123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticates a user with email and password, returning a JWT token upon success."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Items (CRUD)",
+			"description": "Managing Notes, Folders, and Tasks Tree Items",
+			"item": [
+				{
+					"name": "Get Full Tree",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/items/tree",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"items",
+								"tree"
+							]
+						},
+						"description": "Fetches the entire hierarchical structure of notes, folders, and tasks for the authenticated user."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Item (Root)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"label\": \"My Root Folder\",\n    \"type\": \"folder\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/items",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"items"
+							]
+						},
+						"description": "Adds a new note, folder, or task to the top level of the user's tree. \n**Example Body for Note:**\n```json\n{\n    \"label\": \"My Root Note\",\n    \"type\": \"note\",\n    \"content\": \"<p>Initial content</p>\"\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Item (Child)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"label\": \"My Child Note\",\n    \"type\": \"note\",\n    \"content\": \"<p>Content for child note.</p>\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/items/{{parentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"items",
+								"{{parentId}}"
+							]
+						},
+						"description": "Adds a new note, folder, or task inside the specified parent folder. \n**Note:** You need to set the `parentId` variable in the URL or Collection Variables with the ID of a folder obtained from a previous request (e.g., 'Create Item (Root)' or 'Get Full Tree')."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Item (PATCH)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"label\": \"Updated Item Label Here\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/items/{{itemId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"items",
+								"{{itemId}}"
+							]
+						},
+						"description": "Partially updates an item's properties (e.g., label, content, task completion). Does not handle moving items between parents. \n**Note:** You need to set the `itemId` variable in the URL or Collection Variables. Provide *only* the fields you want to change in the request body.\n**Example Body to update content:**\n```json\n{\n    \"content\": \"<p>New updated content.</p>\"\n}\n```\n**Example Body to complete task:**\n```json\n{\n    \"completed\": true\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Item",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/items/{{itemId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"items",
+								"{{itemId}}"
+							]
+						},
+						"description": "Deletes an item (and all its children if it's a folder).\n**Note:** You need to set the `itemId` variable in the URL or Collection Variables."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5001/api",
+			"type": "string"
+		},
+		{
+			"key": "authToken",
+			"value": "",
+			"type": "string",
+			"description": "Set automatically by the Login User request test script."
+		},
+		{
+			"key": "parentId",
+			"value": "",
+			"type": "string",
+			"description": "Set manually with the ID of a folder before running 'Create Item (Child)'."
+		},
+		{
+			"key": "itemId",
+			"value": "",
+			"type": "string",
+			"description": "Set manually with the ID of an item before running 'Update Item' or 'Delete Item'."
+		}
+	]
+}
