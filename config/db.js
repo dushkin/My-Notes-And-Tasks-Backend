@@ -1,5 +1,6 @@
 // config/db.js
 const mongoose = require('mongoose');
+mongoose.set('debug', true);
 
 const connectDB = async () => {
   try {
