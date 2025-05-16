@@ -15,7 +15,29 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 // --- Middleware ---
-app.use(cors(/* Configure options for production */));
+
+// Configure CORS
+const allowedOrigins = [
+  'http://localhost:3000', // Your local frontend dev URL (if different)
+  'http://localhost:5173', // Vite's default local dev URL
+  'https://my-notes-and-tasks-f3bd3.web.app' // IMPORTANT: Replace with your actual deployed frontend URL
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  optionsSuccessStatus: 200, // For legacy browser compatibility
+  credentials: true // If you plan to use cookies or authorization headers
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' })); // Increase JSON body limit if trees might be large
 app.use(express.urlencoded({ limit: '10mb', extended: true })); // Increase URL-encoded limit too
 
