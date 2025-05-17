@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "2.0.1",
-  "commitMessage": "getting the entire tree import to persist to the database",
+  "version": "2.0.2",
+  "commitMessage": "Removed moongoose debugging",
   "description": "",
   "main": "index.js",
   "scripts": {
