@@ -1,6 +1,4 @@
-// utils/backendTreeUtils.js
-
-const { v4: uuidv4 } = require('uuid'); // Assuming you use this for new item IDs elsewhere
+const { v4: uuidv4 } = require('uuid'); // Or your preferred UUID generation method
 
 // --- Sorting Function (consistent with frontend if possible) ---
 function sortItems(items) {
@@ -51,32 +49,28 @@ function deleteItemInTree(nodes, itemId) {
         return newNodes; // Item was at this level
     }
 
-    // If not deleted at this level, recurse and map
     let treeChanged = false;
     const processedNodes = nodes.map(item => {
         if (item.type === 'folder' && Array.isArray(item.children)) {
             const updatedChildren = deleteItemInTree(item.children, itemId);
-            if (updatedChildren !== item.children) { // Check if children array reference changed
+            if (updatedChildren !== item.children) {
                 treeChanged = true;
                 return { ...item, children: updatedChildren };
             }
         }
         return item;
     });
-    return treeChanged ? processedNodes : nodes; // Return new array only if changes were made
+    return treeChanged ? processedNodes : nodes;
 }
 
 
 // --- Recursive Update Function ---
-// Ensures new object references are created for modified items and their ancestors
 function updateItemInTree(nodes, itemId, updates) {
     if (!Array.isArray(nodes)) {
-        // console.warn("updateItemInTree: received non-array 'nodes', returning original (or [] if !nodes). Input:", nodes);
-        return nodes || []; // Return original or empty array if nodes is null/undefined
+        return nodes || [];
     }
     if (!itemId || !updates || Object.keys(updates).length === 0) {
-        // console.log("updateItemInTree: No itemId or no updates provided. Returning original nodes.");
-        return nodes; // No actual update to perform or no item to target
+        return nodes;
     }
 
     let treeModified = false;
@@ -97,7 +91,6 @@ function updateItemInTree(nodes, itemId, updates) {
             }
 
             if (updates.hasOwnProperty('content') && (item.type === 'note' || item.type === 'task')) {
-                // Ensure content is not undefined, default to empty string if necessary
                 const newContent = updates.content !== undefined ? updates.content : "";
                 if (item.content !== newContent) {
                     allowedUpdates.content = newContent;
@@ -123,23 +116,20 @@ function updateItemInTree(nodes, itemId, updates) {
                 console.log(`backendTreeUtils: -> Item ${item.id} after merge:`, JSON.stringify(updatedItem, null, 2).substring(0, 200) + "...");
                 return updatedItem;
             } else {
-                // No actual change to this item's properties based on 'updates'
                 console.log(`backendTreeUtils: -> Item ${item.id} matched, but no effective changes applied from updates.`);
-                return item; // Return original item reference if no valid updates were applied
+                return item;
             }
         }
 
         if (item.type === 'folder' && Array.isArray(item.children)) {
             const updatedChildren = updateItemInTree(item.children, itemId, updates);
-            if (updatedChildren !== item.children) { // Check if children array reference changed
+            if (updatedChildren !== item.children) {
                 treeModified = true;
                 return { ...item, children: updatedChildren };
             }
         }
-        return item; // Return original item if not matched and not a folder with changed children
+        return item;
     });
-
-    // Only return a new array reference if a modification actually happened anywhere in the tree
     return treeModified ? newNodes : nodes;
 }
 
@@ -148,21 +138,59 @@ function updateItemInTree(nodes, itemId, updates) {
 function hasSiblingWithName(siblings, nameToCheck, excludeId = null) {
     if (!Array.isArray(siblings) || !nameToCheck) return false;
     const normalizedName = nameToCheck.trim().toLowerCase();
-    if (!normalizedName) return false; // Empty name cannot conflict
+    if (!normalizedName) return false;
     return siblings.some(sibling =>
         sibling &&
-        sibling.id !== excludeId && // Don't compare item with itself if excludeId is given (for rename)
+        sibling.id !== excludeId &&
         sibling.label &&
         sibling.label.trim().toLowerCase() === normalizedName
     );
 }
 
+// --- Helper for ensuring server-side structure for imported tree (can be expanded) ---
+function ensureServerSideIdsAndStructure(item) {
+    const newItem = { ...item }; // Create a shallow copy to avoid modifying original import data directly
+
+    // Ensure ID: If client sends 'client-' prefixed IDs or no ID, generate server ID.
+    // If client sends a valid-looking UUID that isn't 'client-', we might trust it or still regenerate.
+    // For simplicity here, if it looks like a temporary client ID or is missing, generate one.
+    if (!newItem.id || typeof newItem.id !== 'string' || newItem.id.startsWith('client-')) {
+        newItem.id = uuidv4();
+    }
+
+    // Ensure basic fields
+    newItem.label = (typeof newItem.label === 'string' && newItem.label.trim()) ? newItem.label.trim() : "Untitled";
+    const validTypes = ['folder', 'note', 'task'];
+    if (!validTypes.includes(newItem.type)) {
+        // Basic guess for type if invalid
+        newItem.type = (Array.isArray(newItem.children) && newItem.children.length > 0) ? 'folder' : 'note';
+    }
+
+    if (newItem.type === 'folder') {
+        newItem.children = Array.isArray(newItem.children)
+            ? newItem.children.map(child => ensureServerSideIdsAndStructure(child)) // Recursive call
+            : [];
+        delete newItem.content; // Folders shouldn't have content
+        delete newItem.completed; // Folders aren't completable
+    } else if (newItem.type === 'note') {
+        newItem.content = (typeof newItem.content === 'string') ? newItem.content : "";
+        delete newItem.children; // Notes don't have children
+        delete newItem.completed; // Notes aren't completable
+    } else if (newItem.type === 'task') {
+        newItem.content = (typeof newItem.content === 'string') ? newItem.content : "";
+        newItem.completed = typeof newItem.completed === 'boolean' ? newItem.completed : false;
+        delete newItem.children; // Tasks don't have children
+    }
+    return newItem;
+}
+
+
 module.exports = {
     sortItems,
     findItemRecursive,
-    // findParentArrayAndIndex, // Not strictly needed by the controller if findItemRecursive returns parentArray
     deleteItemInTree,
     updateItemInTree,
     hasSiblingWithName,
-    uuidv4 // If you use it for creating items; ensure it's consistent if IDs come from client too
+    ensureServerSideIdsAndStructure, // Export the new helper
+    uuidv4
 };

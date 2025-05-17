@@ -1,17 +1,15 @@
-// routes/itemsRoutes.js
 const express = require('express');
 const {
-    getNotesTree, // Keep this for fetching the whole tree
-    createItem,
-    updateItem,
-    deleteItem,
-    // getItem, // Optional: Add later if needed
+  getNotesTree,
+  createItem,
+  updateItem,
+  deleteItem,
+  replaceUserTree, // Add this
 } = require('../controllers/itemsController');
 const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// Apply auth middleware to all item routes
 router.use(authMiddleware);
 
 /**
@@ -39,6 +37,65 @@ router.use(authMiddleware);
  *         $ref: '#/components/responses/ServerError'
  */
 router.get('/tree', getNotesTree);
+
+/**
+ * @openapi
+ * /items/tree:
+ *   put:
+ *     tags:
+ *       - Items
+ *     summary: Replace the entire notes tree for the user
+ *     description: Replaces the user's current notes and tasks tree with the provided tree structure. Used for full import.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       description: An object containing the new tree structure.
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - newTree
+ *             properties:
+ *               newTree:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/Item'
+ *                 description: The new tree structure.
+ *     responses:
+ *       '200':
+ *         description: Tree replaced successfully. Returns the new tree.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Tree replaced successfully.
+ *                 notesTree:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Item'
+ *       '400':
+ *         description: Invalid input (e.g., newTree is not an array).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '401':
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       '404':
+ *         description: User not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '500':
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.put('/tree', replaceUserTree);
 
 /**
  * @openapi
@@ -196,8 +253,5 @@ router.patch('/:itemId', updateItem);
  *         $ref: '#/components/responses/ServerError'
  */
 router.delete('/:itemId', deleteItem);
-
-// Optional: Route for getting a single item's details
-// router.get('/:itemId', getItem);
 
 module.exports = router;
