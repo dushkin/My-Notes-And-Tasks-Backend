@@ -1,42 +1,35 @@
 // tests/items.test.js
 const request = require('supertest');
-// const mongoose = require('mongoose'); // No longer needed here for connect/disconnect
-// const connectDB = require('../config/db'); // No longer needed here
 const app = require('../server');
 const User = require('../models/User');
 
 describe('Items API Endpoints', () => {
     let userToken;
     let userId;
-
-    // connectDB and mongoose.disconnect are handled by setupTests.js
-    // beforeAll(async () => { /* REMOVE */ });
-    // afterAll(async () => { /* REMOVE */ });
+    let userEmail;
 
     beforeEach(async () => {
-        // User.deleteMany is now handled by setupTests.js's beforeEach if you enable it there,
-        // or you can keep it here if you prefer per-suite setup for users.
-        // For robustness, ensure users are cleaned if not handled globally.
-        // await User.deleteMany({}); // This might be redundant if setupTests.js clears all collections
-
+        // Global beforeEach in setupTests.js should clear users matching a pattern
+        // Create a fresh user for each item test to ensure isolation for item manipulations
+        userEmail = `itemsuser-${Date.now()}@test.example.com`;
         const registerRes = await request(app)
             .post('/api/auth/register')
-            .send({ email: `itemsuser-${Date.now()}@example.com`, password: 'password123' }); // Unique email per run
+            .send({ email: userEmail, password: 'password123' });
 
-        if (registerRes.body.token) {
-            userToken = registerRes.body.token;
-            userId = registerRes.body.user._id;
-            // Initialize with an empty tree for this user
-            const user = await User.findById(userId);
-            if (user) {
-                user.notesTree = [];
-                await user.save();
-            } else {
-                throw new Error('User not found immediately after registration in beforeEach of items.test.js');
-            }
+        if (!registerRes.body.token || !registerRes.body.user?._id) {
+            console.error("Items test beforeEach: Failed to register user or get token/userId", registerRes.body);
+            throw new Error("User registration failed in items test setup, cannot proceed.");
+        }
+        userToken = registerRes.body.token;
+        userId = registerRes.body.user._id;
+
+        // Ensure the user's notesTree is empty before each specific item test scenario
+        const user = await User.findById(userId);
+        if (user) {
+            user.notesTree = [];
+            await user.save();
         } else {
-            console.error("Failed to register user in beforeEach for items.test.js", registerRes.body);
-            throw new Error("User registration failed in beforeEach, cannot get token/userId.");
+            throw new Error(`User ${userId} not found after registration in beforeEach of items.test.js`);
         }
     });
 
@@ -95,7 +88,7 @@ describe('Items API Endpoints', () => {
             res = await request(app)
                 .post('/api/items')
                 .set('Authorization', `Bearer ${userToken}`)
-                .send({ label: 'Test' }); // Missing type
+                .send({ label: 'Test' });
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Invalid item type.');
         });
@@ -118,7 +111,7 @@ describe('Items API Endpoints', () => {
 
     describe('POST /api/items/:parentId (create child item)', () => {
         let rootFolderId;
-        beforeEach(async () => { // This beforeEach is nested, runs after the outer beforeEach
+        beforeEach(async () => {
             const folderRes = await request(app)
                 .post('/api/items')
                 .set('Authorization', `Bearer ${userToken}`)
@@ -166,14 +159,12 @@ describe('Items API Endpoints', () => {
 
     describe('PATCH /api/items/:itemId', () => {
         let noteId;
-        let initialNote;
         beforeEach(async () => {
             const noteRes = await request(app)
                 .post('/api/items')
                 .set('Authorization', `Bearer ${userToken}`)
                 .send({ label: 'Original Note', type: 'note', content: 'Original content' });
             noteId = noteRes.body.id;
-            initialNote = noteRes.body;
         });
 
         it('should update an item label', async () => {
@@ -227,10 +218,15 @@ describe('Items API Endpoints', () => {
                 .post('/api/items')
                 .set('Authorization', `Bearer ${userToken}`)
                 .send({ label: 'Sibling A', type: 'note' });
-            // noteId from beforeEach is "Original Note"
+
+            const itemToRenameRes = await request(app)
+                .post('/api/items')
+                .set('Authorization', `Bearer ${userToken}`)
+                .send({ label: 'Sibling B', type: 'note' });
+            const itemToRenameId = itemToRenameRes.body.id;
 
             const res = await request(app)
-                .patch(`/api/items/${noteId}`) // Trying to rename "Original Note"
+                .patch(`/api/items/${itemToRenameId}`)
                 .set('Authorization', `Bearer ${userToken}`)
                 .send({ label: 'Sibling A' });
 
@@ -297,18 +293,16 @@ describe('Items API Endpoints', () => {
             expect(res.body.notesTree[0].label).toBe('Imported Folder');
             expect(res.body.notesTree[0].children[0].label).toBe('Imported Note');
 
-            // Verify IDs were regenerated by the backend
             expect(res.body.notesTree[0].id).not.toBe('client-f1');
-            expect(res.body.notesTree[0].id).toMatch(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/); // UUID format
+            expect(res.body.notesTree[0].id).toMatch(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
             expect(res.body.notesTree[0].children[0].id).not.toBe('client-n1');
             expect(res.body.notesTree[0].children[0].id).toMatch(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
             expect(res.body.notesTree[1].id).not.toBe('client-t1');
             expect(res.body.notesTree[1].id).toMatch(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
 
-
             const user = await User.findById(userId);
             expect(user.notesTree.length).toBe(2);
-            expect(user.notesTree[0].id).toEqual(res.body.notesTree[0].id); // Check if DB matches response
+            expect(user.notesTree[0].id).toEqual(res.body.notesTree[0].id);
             expect(user.notesTree[0].label).toBe('Imported Folder');
         });
 

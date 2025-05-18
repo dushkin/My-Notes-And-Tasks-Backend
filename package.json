@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "2.1.0",
-  "commitMessage": "Added first tests",
+  "version": "2.1.1",
+  "commitMessage": "Fixed deleting all account from db after tests",
   "description": "",
   "main": "index.js",
   "scripts": {

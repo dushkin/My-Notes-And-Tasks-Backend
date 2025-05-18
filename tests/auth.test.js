@@ -1,20 +1,17 @@
 // tests/auth.test.js
 const request = require('supertest');
-// const mongoose = require('mongoose'); // No longer needed here for connect/disconnect
-// const connectDB = require('../config/db'); // No longer needed here
 const app = require('../server');
 const User = require('../models/User');
 
 describe('Auth API Endpoints', () => {
 
-    // connectDB and mongoose.disconnect are handled by setupTests.js
-    // beforeAll(async () => { /* REMOVE */ });
-    // afterAll(async () => { /* REMOVE */ });
-
     beforeEach(async () => {
-        // If setupTests.js clears all collections, this might be redundant.
-        // Otherwise, it's good for ensuring a clean state for User collection.
-        await User.deleteMany({});
+        // Specific cleanup for users, if not covered by a global pattern in setupTests.js
+        // or if more granular control is needed for this suite.
+        // If setupTests.js already cleans test users effectively, this might be redundant.
+        await User.deleteMany({ email: { $regex: /@test\.example\.com$/ } });
+        await User.deleteMany({ email: 'test@example.com' }); // For specific emails used in these tests
+        await User.deleteMany({ email: 'loginuser@example.com' });
     });
 
     describe('POST /api/auth/register', () => {
@@ -22,22 +19,22 @@ describe('Auth API Endpoints', () => {
             const res = await request(app)
                 .post('/api/auth/register')
                 .send({
-                    email: 'test@example.com',
+                    email: 'test@test.example.com',
                     password: 'password123',
                 });
             expect(res.statusCode).toEqual(201);
             expect(res.body).toHaveProperty('token');
             expect(res.body).toHaveProperty('user');
-            expect(res.body.user.email).toBe('test@example.com');
+            expect(res.body.user.email).toBe('test@test.example.com');
             expect(res.body.user).not.toHaveProperty('password');
-            const userInDb = await User.findOne({ email: 'test@example.com' });
+            const userInDb = await User.findOne({ email: 'test@test.example.com' });
             expect(userInDb).not.toBeNull();
         });
 
         it('should return 400 if email or password is not provided', async () => {
             let res = await request(app)
                 .post('/api/auth/register')
-                .send({ email: 'test@example.com' });
+                .send({ email: 'test@test.example.com' });
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Please provide email and password');
 
@@ -52,7 +49,7 @@ describe('Auth API Endpoints', () => {
             const res = await request(app)
                 .post('/api/auth/register')
                 .send({
-                    email: 'test@example.com',
+                    email: 'shortpass@test.example.com',
                     password: 'pass',
                 });
             expect(res.statusCode).toEqual(400);
@@ -63,13 +60,13 @@ describe('Auth API Endpoints', () => {
             await request(app)
                 .post('/api/auth/register')
                 .send({
-                    email: 'test@example.com',
+                    email: 'existing@test.example.com',
                     password: 'password123',
                 });
             const res = await request(app)
                 .post('/api/auth/register')
                 .send({
-                    email: 'test@example.com',
+                    email: 'existing@test.example.com',
                     password: 'password123',
                 });
             expect(res.statusCode).toEqual(400);
@@ -79,11 +76,10 @@ describe('Auth API Endpoints', () => {
 
     describe('POST /api/auth/login', () => {
         beforeEach(async () => {
-            // Register a user to test login
             await request(app)
                 .post('/api/auth/register')
                 .send({
-                    email: 'loginuser@example.com',
+                    email: 'loginuser@test.example.com',
                     password: 'password123',
                 });
         });
@@ -92,20 +88,20 @@ describe('Auth API Endpoints', () => {
             const res = await request(app)
                 .post('/api/auth/login')
                 .send({
-                    email: 'loginuser@example.com',
+                    email: 'loginuser@test.example.com',
                     password: 'password123',
                 });
             expect(res.statusCode).toEqual(200);
             expect(res.body).toHaveProperty('token');
             expect(res.body).toHaveProperty('user');
-            expect(res.body.user.email).toBe('loginuser@example.com');
+            expect(res.body.user.email).toBe('loginuser@test.example.com');
         });
 
         it('should return 401 for invalid credentials (wrong password)', async () => {
             const res = await request(app)
                 .post('/api/auth/login')
                 .send({
-                    email: 'loginuser@example.com',
+                    email: 'loginuser@test.example.com',
                     password: 'wrongpassword',
                 });
             expect(res.statusCode).toEqual(401);
@@ -116,7 +112,7 @@ describe('Auth API Endpoints', () => {
             const res = await request(app)
                 .post('/api/auth/login')
                 .send({
-                    email: 'nonexistent@example.com',
+                    email: 'nonexistent@test.example.com',
                     password: 'password123',
                 });
             expect(res.statusCode).toEqual(401);
@@ -126,7 +122,7 @@ describe('Auth API Endpoints', () => {
         it('should return 400 if email or password is not provided', async () => {
             let res = await request(app)
                 .post('/api/auth/login')
-                .send({ email: 'loginuser@example.com' });
+                .send({ email: 'loginuser@test.example.com' });
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Please provide email and password');
         });
