@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "2.1.1",
-  "commitMessage": "Fixed deleting all account from db after tests",
+  "version": "2.3.0",
+  "commitMessage": "Support images upload to server; Increase payload size",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -20,6 +20,7 @@
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.14.1",
+    "multer": "^2.0.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^11.1.0"
@@ -32,7 +33,9 @@
     "supertest": "^7.1.1"
   },
   "jest": {
-    "setupFilesAfterEnv": ["<rootDir>/tests/setupTests.js"],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setupTests.js"
+    ],
     "testEnvironment": "node"
   }
 }
