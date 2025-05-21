@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "2.3.1",
-  "commitMessage": "Added Ignore all uploaded image files public/uploads/images/* to .gitIgnore",
+  "version": "2.4.0",
+  "commitMessage": "Implement an orphaned image files cleanup mechanism",
   "description": "",
   "main": "index.js",
   "scripts": {
