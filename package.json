@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "2.3.0",
-  "commitMessage": "Support images upload to server; Increase payload size",
+  "version": "2.3.1",
+  "commitMessage": "Added Ignore all uploaded image files public/uploads/images/* to .gitIgnore",
   "description": "",
   "main": "index.js",
   "scripts": {
