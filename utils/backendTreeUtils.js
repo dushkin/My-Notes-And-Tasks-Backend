@@ -66,44 +66,58 @@ function updateItemInTree(nodes, itemId, updates) {
         if (item.id === itemId) {
             const allowedUpdates = {};
             let itemChanged = false;
+
+            // Label
             if (updates.hasOwnProperty('label') && typeof updates.label === 'string') {
                 const trimmedLabel = updates.label.trim();
-                if (item.label !== trimmedLabel) {
+                if (item.label !== trimmedLabel && trimmedLabel.length > 0) { // Ensure not empty
                     allowedUpdates.label = trimmedLabel;
                     itemChanged = true;
                 }
             }
+            // Content (for notes/tasks)
             if (updates.hasOwnProperty('content') && (item.type === 'note' || item.type === 'task')) {
-                const newContent = updates.content !== undefined ? updates.content : "";
+                const newContent = updates.content !== undefined ? updates.content : ""; // Default to empty string if null/undefined
                 if (item.content !== newContent) {
                     allowedUpdates.content = newContent;
                     itemChanged = true;
                 }
             }
+            // Completed (for tasks)
             if (updates.hasOwnProperty('completed') && item.type === 'task') {
-                const newCompleted = !!updates.completed;
+                const newCompleted = !!updates.completed; // Ensure boolean
                 if (item.completed !== newCompleted) {
                     allowedUpdates.completed = newCompleted;
                     itemChanged = true;
                 }
             }
+            // Direction (for notes/tasks)
+            if (updates.hasOwnProperty('direction') && (item.type === 'note' || item.type === 'task')) {
+                const newDirection = (updates.direction === 'rtl' || updates.direction === 'ltr') ? updates.direction : 'ltr';
+                if (item.direction !== newDirection) {
+                    allowedUpdates.direction = newDirection;
+                    itemChanged = true;
+                }
+            }
+
             if (itemChanged) {
                 treeModified = true;
                 return { ...item, ...allowedUpdates };
             }
-            return item;
+            return item; // Return original item if no allowed fields changed
         }
         if (item.type === 'folder' && Array.isArray(item.children)) {
             const updatedChildren = updateItemInTree(item.children, itemId, updates);
-            if (updatedChildren !== item.children) {
+            if (updatedChildren !== item.children) { // Check if children array reference changed
                 treeModified = true;
                 return { ...item, children: updatedChildren };
             }
         }
         return item;
     });
-    return treeModified ? newNodes : nodes;
+    return treeModified ? newNodes : nodes; // Return newNodes if any modification occurred
 }
+
 
 function hasSiblingWithName(siblings, nameToCheck, excludeId = null) {
     if (!Array.isArray(siblings) || !nameToCheck) return false;
@@ -119,10 +133,7 @@ function hasSiblingWithName(siblings, nameToCheck, excludeId = null) {
 
 function ensureServerSideIdsAndStructure(item) {
     const newItem = { ...item };
-
-    // Always generate a new server-side ID for imported items and their children
     newItem.id = uuidv4();
-
     newItem.label = (typeof newItem.label === 'string' && newItem.label.trim())
         ? newItem.label.trim()
         : "Untitled";
@@ -137,13 +148,16 @@ function ensureServerSideIdsAndStructure(item) {
             : [];
         delete newItem.content;
         delete newItem.completed;
+        delete newItem.direction; // Folders don't have direction
     } else if (newItem.type === 'note') {
         newItem.content = (typeof newItem.content === 'string') ? newItem.content : "";
+        newItem.direction = (newItem.direction === 'rtl' || newItem.direction === 'ltr') ? newItem.direction : 'ltr'; // Ensure direction
         delete newItem.children;
         delete newItem.completed;
     } else if (newItem.type === 'task') {
         newItem.content = (typeof newItem.content === 'string') ? newItem.content : "";
         newItem.completed = typeof newItem.completed === 'boolean' ? newItem.completed : false;
+        newItem.direction = (newItem.direction === 'rtl' || newItem.direction === 'ltr') ? newItem.direction : 'ltr'; // Ensure direction
         delete newItem.children;
     }
     return newItem;
