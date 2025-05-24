@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "2.6.0",
-  "commitMessage": "Support items timestamps",
+  "version": "2.6.1",
+  "commitMessage": "Extend tests",
   "description": "",
   "main": "index.js",
   "scripts": {
