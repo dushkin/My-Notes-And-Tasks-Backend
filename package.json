@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "2.5.1",
-  "commitMessage": "Fix RTL bug",
+  "version": "2.6.0",
+  "commitMessage": "Support items timestamps",
   "description": "",
   "main": "index.js",
   "scripts": {

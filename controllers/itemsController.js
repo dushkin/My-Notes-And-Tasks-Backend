@@ -1,3 +1,4 @@
+// controllers/itemsController.js
 const User = require('../models/User');
 const {
     sortItems,
@@ -5,16 +6,44 @@ const {
     deleteItemInTree,
     updateItemInTree,
     hasSiblingWithName,
-    ensureServerSideIdsAndStructure, // Import this
+    ensureServerSideIdsAndStructure,
     uuidv4
 } = require('../utils/backendTreeUtils');
+
+// Helper function to recursively add missing timestamps
+function addMissingTimestampsToTree(nodes, defaultTimestamp) {
+    if (!Array.isArray(nodes)) {
+        return [];
+    }
+    return nodes.map(node => {
+        const processedNode = { ...node };
+        if (!processedNode.createdAt) {
+            processedNode.createdAt = defaultTimestamp;
+        }
+        if (!processedNode.updatedAt) {
+            processedNode.updatedAt = processedNode.createdAt;
+        }
+
+        if (processedNode.children && Array.isArray(processedNode.children)) {
+            processedNode.children = addMissingTimestampsToTree(processedNode.children, defaultTimestamp);
+        }
+        return processedNode;
+    });
+}
 
 // --- Get Full Tree ---
 exports.getNotesTree = async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
         if (!user) return res.status(404).json({ error: 'User not found' });
-        res.status(200).json({ notesTree: user.notesTree || [] });
+
+        let treeToReturn = user.notesTree || [];
+        if (Array.isArray(treeToReturn)) {
+            const userLastUpdated = user.updatedAt ? user.updatedAt.toISOString() : new Date(0).toISOString();
+            treeToReturn = addMissingTimestampsToTree(treeToReturn, userLastUpdated);
+        }
+
+        res.status(200).json({ notesTree: treeToReturn });
     } catch (err) {
         console.error('Get Notes Tree Error:', err.message, err.stack);
         res.status(500).json({ error: 'Server error fetching notes tree' });
@@ -51,16 +80,19 @@ exports.createItem = async (req, res) => {
         }
 
         if (hasSiblingWithName(parentArray, trimmedLabel)) {
-            const location = parentId ? `in folder "${parentItem?.label || parentId}"` : "at the root level";
+            const location = parentId ?
+                `in folder "${parentItem?.label || parentId}"` : "at the root level";
             return res.status(400).json({ error: `An item named "${trimmedLabel}" already exists ${location}.` });
         }
 
+        const now = new Date().toISOString();
         const newItem = {
             id: uuidv4(),
             label: trimmedLabel,
             type: type,
+            createdAt: now,
+            updatedAt: now,
         };
-
         if (type === 'folder') newItem.children = [];
         if (type === 'note' || type === 'task') newItem.content = content || "";
         if (type === 'task') {
@@ -81,7 +113,6 @@ exports.createItem = async (req, res) => {
         user.notesTree = currentTree;
         user.markModified('notesTree');
         const savedUser = await user.save();
-
         const finalTree = Array.isArray(savedUser.notesTree) ? savedUser.notesTree : [];
         const createdItemSearchResult = findItemRecursive(finalTree, newItem.id);
 
@@ -162,17 +193,20 @@ exports.updateItem = async (req, res) => {
             console.log(`Backend: updateItem - No effective changes made by updateItemInTree for item ${itemId} (properties are identical). Returning original item.`);
             return res.status(200).json(originalItem);
         }
-        if (updatedTreeInMemory === currentTree) {
-            console.log(`Backend: updateItem - updateItemInTree returned the same tree reference, indicating no structural changes or effective property changes for item ${itemId}. Returning original item.`);
+        if (updatedTreeInMemory === currentTree && !itemAfterInMemoryUpdate.updatedAt) { // Check if only updatedAt was the potential change and it didn't happen
+            console.log(`Backend: updateItem - updateItemInTree returned the same tree reference and no updatedAt change, indicating no effective property changes for item ${itemId}. Returning original item.`);
             return res.status(200).json(originalItem);
         }
 
+
         const updatedTreeInMemoryString = JSON.stringify(updatedTreeInMemory, null, 2);
         console.log('itemsController: Tree after updateItemInTree (before assignment - snippet):', updatedTreeInMemoryString.substring(0, Math.min(200, updatedTreeInMemoryString.length)) + (updatedTreeInMemoryString.length > 200 ? "..." : ""));
+
         user.notesTree = updatedTreeInMemory;
 
         const preSaveTreeLog = user.notesTree ? JSON.stringify(user.notesTree, null, 2) : "undefined/null";
         console.log('itemsController: Attempting to mark notesTree as modified. Current user.notesTree snippet before save:', preSaveTreeLog.substring(0, Math.min(200, preSaveTreeLog.length)) + (preSaveTreeLog.length > 200 ? "..." : ""));
+
         user.markModified('notesTree');
         console.log('itemsController: notesTree marked as modified. Attempting user.save().');
 
@@ -200,7 +234,6 @@ exports.updateItem = async (req, res) => {
         }
 
         const itemSearchResult = findItemRecursive(finalTreeToSearch, itemId);
-
         if (!itemSearchResult || !itemSearchResult.item) {
             console.error(`itemsController: Error finding item ${itemId} in the tree used for response (finalTreeToSearch). Item might have been unexpectedly lost or structure changed.`);
             const finalTreeForLog = JSON.stringify(finalTreeToSearch, null, 2);
@@ -224,7 +257,6 @@ exports.updateItem = async (req, res) => {
         const itemToReturnString = JSON.stringify(itemToReturn, null, 2);
         console.log(`itemsController: Sending item ${itemId} to client:`, itemToReturnString.substring(0, Math.min(700, itemToReturnString.length)) + (itemToReturnString.length > 700 ? "..." : ""));
         res.status(200).json(itemToReturn);
-
     } catch (err) {
         console.error('Update Item Error in Controller CATCH BLOCK:', err.message, err.stack);
         res.status(500).json({ error: 'Server error updating item.' });
@@ -236,6 +268,7 @@ exports.updateItem = async (req, res) => {
 exports.deleteItem = async (req, res) => {
     const { itemId } = req.params;
     if (!itemId) return res.status(400).json({ error: 'Item ID is required.' });
+
     try {
         const user = await User.findById(req.user.id);
         if (!user) return res.status(404).json({ error: 'User not found' });
@@ -260,7 +293,6 @@ exports.deleteItem = async (req, res) => {
 // --- Replace User's Entire Tree (for Import) ---
 exports.replaceUserTree = async (req, res) => {
     const { newTree } = req.body;
-
     if (!Array.isArray(newTree)) {
         return res.status(400).json({ error: 'Invalid tree data: Must be an array.' });
     }
@@ -269,22 +301,16 @@ exports.replaceUserTree = async (req, res) => {
         const user = await User.findById(req.user.id);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
-        // Process the imported tree: ensure IDs, structure, and essential fields.
-        // This step is crucial to sanitize and normalize client-provided tree data.
         const processedNewTree = newTree.map(item => ensureServerSideIdsAndStructure(item));
 
         user.notesTree = processedNewTree;
         user.markModified('notesTree');
-        const savedUser = await user.save(); // Save the user with the new tree
+        const savedUser = await user.save();
 
-        // Return the tree that was actually saved.
-        // It's good practice to fetch again or use the result of save() to ensure what's returned is the source of truth.
-        // For simplicity here, we'll trust savedUser.notesTree from the save operation's result.
         res.status(200).json({
             message: 'Tree replaced successfully.',
-            notesTree: savedUser.notesTree || [] // Ensure it's an array
+            notesTree: savedUser.notesTree || []
         });
-
     } catch (err) {
         console.error('Replace User Tree Error:', err.message, err.stack);
         res.status(500).json({ error: 'Server error replacing tree.' });

@@ -40,9 +40,11 @@ function deleteItemInTree(nodes, itemId) {
         }
         return true;
     });
+
     if (itemFoundAndDeleted) {
         return newNodes;
     }
+
     let treeChanged = false;
     const processedNodes = nodes.map(item => {
         if (item.type === 'folder' && Array.isArray(item.children)) {
@@ -67,33 +69,29 @@ function updateItemInTree(nodes, itemId, updates) {
             const allowedUpdates = {};
             let itemChanged = false;
 
-            // Label
             if (updates.hasOwnProperty('label') && typeof updates.label === 'string') {
                 const trimmedLabel = updates.label.trim();
-                if (item.label !== trimmedLabel && trimmedLabel.length > 0) { // Ensure not empty
+                if (item.label !== trimmedLabel && trimmedLabel.length > 0) {
                     allowedUpdates.label = trimmedLabel;
                     itemChanged = true;
                 }
             }
-            // Content (for notes/tasks)
             if (updates.hasOwnProperty('content') && (item.type === 'note' || item.type === 'task')) {
-                const newContent = updates.content !== undefined ? updates.content : ""; // Default to empty string if null/undefined
+                const newContent = updates.content !== undefined ? updates.content : "";
                 if (item.content !== newContent) {
                     allowedUpdates.content = newContent;
                     itemChanged = true;
                 }
             }
-            // Completed (for tasks)
             if (updates.hasOwnProperty('completed') && item.type === 'task') {
-                const newCompleted = !!updates.completed; // Ensure boolean
+                const newCompleted = !!updates.completed;
                 if (item.completed !== newCompleted) {
                     allowedUpdates.completed = newCompleted;
                     itemChanged = true;
                 }
             }
-            // Direction (for notes/tasks)
             if (updates.hasOwnProperty('direction') && (item.type === 'note' || item.type === 'task')) {
-                const newDirection = (updates.direction === 'rtl' || updates.direction === 'ltr') ? updates.direction : 'ltr';
+                const newDirection = (updates.direction === 'rtl' || updates.direction === 'ltr') ? updates.direction : (item.direction || 'ltr');
                 if (item.direction !== newDirection) {
                     allowedUpdates.direction = newDirection;
                     itemChanged = true;
@@ -102,20 +100,21 @@ function updateItemInTree(nodes, itemId, updates) {
 
             if (itemChanged) {
                 treeModified = true;
+                allowedUpdates.updatedAt = new Date().toISOString(); // Update timestamp
                 return { ...item, ...allowedUpdates };
             }
-            return item; // Return original item if no allowed fields changed
+            return item;
         }
         if (item.type === 'folder' && Array.isArray(item.children)) {
             const updatedChildren = updateItemInTree(item.children, itemId, updates);
-            if (updatedChildren !== item.children) { // Check if children array reference changed
+            if (updatedChildren !== item.children) {
                 treeModified = true;
                 return { ...item, children: updatedChildren };
             }
         }
         return item;
     });
-    return treeModified ? newNodes : nodes; // Return newNodes if any modification occurred
+    return treeModified ? newNodes : nodes;
 }
 
 
@@ -133,14 +132,23 @@ function hasSiblingWithName(siblings, nameToCheck, excludeId = null) {
 
 function ensureServerSideIdsAndStructure(item) {
     const newItem = { ...item };
-    newItem.id = uuidv4();
+    const now = new Date().toISOString();
+
+    newItem.id = newItem.id && typeof newItem.id === 'string' && !newItem.id.startsWith('client-') && !newItem.id.startsWith('temp-') ? newItem.id : uuidv4();
+
     newItem.label = (typeof newItem.label === 'string' && newItem.label.trim())
         ? newItem.label.trim()
         : "Untitled";
+
     const validTypes = ['folder', 'note', 'task'];
     if (!validTypes.includes(newItem.type)) {
         newItem.type = (Array.isArray(newItem.children) && newItem.children.length > 0) ? 'folder' : 'note';
     }
+
+    if (!newItem.createdAt || typeof newItem.createdAt !== 'string' || new Date(newItem.createdAt).toString() === 'Invalid Date') {
+        newItem.createdAt = now;
+    }
+    newItem.updatedAt = now;
 
     if (newItem.type === 'folder') {
         newItem.children = Array.isArray(newItem.children)
@@ -148,16 +156,16 @@ function ensureServerSideIdsAndStructure(item) {
             : [];
         delete newItem.content;
         delete newItem.completed;
-        delete newItem.direction; // Folders don't have direction
+        delete newItem.direction;
     } else if (newItem.type === 'note') {
         newItem.content = (typeof newItem.content === 'string') ? newItem.content : "";
-        newItem.direction = (newItem.direction === 'rtl' || newItem.direction === 'ltr') ? newItem.direction : 'ltr'; // Ensure direction
+        newItem.direction = (newItem.direction === 'rtl' || newItem.direction === 'ltr') ? newItem.direction : 'ltr';
         delete newItem.children;
         delete newItem.completed;
     } else if (newItem.type === 'task') {
         newItem.content = (typeof newItem.content === 'string') ? newItem.content : "";
         newItem.completed = typeof newItem.completed === 'boolean' ? newItem.completed : false;
-        newItem.direction = (newItem.direction === 'rtl' || newItem.direction === 'ltr') ? newItem.direction : 'ltr'; // Ensure direction
+        newItem.direction = (newItem.direction === 'rtl' || newItem.direction === 'ltr') ? newItem.direction : 'ltr';
         delete newItem.children;
     }
     return newItem;
