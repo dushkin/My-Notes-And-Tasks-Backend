@@ -6,45 +6,32 @@ const { generateToken } = require('../utils/jwt');
 exports.register = async (req, res) => {
     const { email, password } = req.body;
 
-    // --- Basic Input Validation ---
-    if (!email || !password) {
-        return res.status(400).json({ error: 'Please provide email and password' });
-    }
-    // Add more robust validation as needed (e.g., email format, password strength)
-    if (password.length < 8) {
-        return res.status(400).json({ error: 'Password must be at least 8 characters long' });
-    }
+    // Input validation is now primarily handled by express-validator in authRoutes.js
 
     try {
-        // --- Check if user already exists ---
-        let user = await User.findOne({ email: email.toLowerCase() });
+        // Check if user already exists
+        let user = await User.findOne({ email: email.toLowerCase() }); // email is already trimmed and normalized by validator
         if (user) {
             return res.status(400).json({ error: 'User already exists with this email' });
         }
 
-        // --- Hash Password ---
+        // Hash Password
         const hashedPassword = await hashPassword(password);
-
-        // --- Create and Save User ---
-        // Note: The notesTree will default to [] based on the schema
+        // Create and Save User
         user = new User({
-            email: email.toLowerCase(),
+            email: email.toLowerCase(), // email is already trimmed and normalized
             password: hashedPassword,
         });
-
         await user.save();
 
-        // --- Generate JWT ---
-        const token = generateToken(user.id); // user.id is the MongoDB _id
+        // Generate JWT
+        const token = generateToken(user.id);
 
-        // --- Send Response ---
-        // Return token and user object (password is removed by toJSON method in schema)
+        // Send Response
         res.status(201).json({ token, user });
-
     } catch (err) {
         console.error('Registration Error:', err.message);
-        if (err.name === 'ValidationError') {
-            // Extract specific validation errors if needed
+        if (err.name === 'ValidationError') { // Mongoose validation error
             const messages = Object.values(err.errors).map(val => val.message);
             return res.status(400).json({ error: messages.join(', ') });
         }
@@ -55,35 +42,25 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
     const { email, password } = req.body;
 
-    // --- Basic Input Validation ---
-    if (!email || !password) {
-        return res.status(400).json({ error: 'Please provide email and password' });
-    }
+    // Input validation is now primarily handled by express-validator in authRoutes.js
 
     try {
-        // --- Find User ---
-        // Explicitly select the password field as it might be excluded by default in some setups
-        const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
-
+        // Find User
+        const user = await User.findOne({ email: email.toLowerCase() }).select('+password'); // email is already trimmed and normalized
         if (!user) {
-            // Generic error message for security (don't reveal if email exists)
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // --- Compare Passwords ---
+        // Compare Passwords
         const isMatch = await comparePassword(password, user.password);
-
         if (!isMatch) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // --- Generate JWT ---
+        // Generate JWT
         const token = generateToken(user.id);
-
-        // --- Send Response ---
-        // Find the user again *without* the password to send back
+        // Send Response
         const userResponse = await User.findById(user.id);
-
         res.status(200).json({ token, user: userResponse });
 
     } catch (err) {

@@ -1,16 +1,100 @@
+// routes/itemsRoutes.js
 const express = require('express');
+const { body, param, validationResult, check } = require('express-validator');
 const {
-  getNotesTree,
-  createItem,
-  updateItem,
-  deleteItem,
-  replaceUserTree, // Add this
+    getNotesTree,
+    createItem,
+    updateItem,
+    deleteItem,
+    replaceUserTree,
 } = require('../controllers/itemsController');
 const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
+// Middleware to handle validation errors
+const validate = (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        // Simplified error message: just the msg from express-validator
+        const errorMessages = errors.array().map(err => err.msg);
+
+        // The rest of the function remains the same for joining messages
+        let flatErrorMessages = [];
+        errorMessages.forEach(msg => {
+            if (Array.isArray(msg)) { // This case is less likely now
+                flatErrorMessages = flatErrorMessages.concat(msg);
+            } else {
+                flatErrorMessages.push(msg);
+            }
+        });
+        return res.status(400).json({ error: flatErrorMessages.join(', ') || 'Validation error' });
+    }
+    next();
+};
+
+// Apply authentication middleware to all routes
 router.use(authMiddleware);
+
+// Validation rules for creating items
+const itemValidations = [
+    body('label')
+        .trim()
+        .notEmpty().withMessage('Label is required.')
+        .isString().withMessage('Label must be a string.')
+        .isLength({ min: 1, max: 255 }).withMessage('Label must be between 1 and 255 characters.'),
+    body('type')
+        .isIn(['folder', 'note', 'task']).withMessage('Invalid item type. Must be folder, note, or task.'),
+    body('content')
+        .optional()
+        .isString().withMessage('Content must be a string.'),
+    body('completed')
+        .optional()
+        .isBoolean().withMessage('Completed status must be a boolean.'),
+];
+
+// Validation rules for updating items
+const updateItemValidations = [
+    body('label')
+        .optional()
+        .trim()
+        .notEmpty().withMessage('Label cannot be empty if provided.')
+        .isString().withMessage('Label must be a string.')
+        .isLength({ min: 1, max: 255 }).withMessage('Label must be between 1 and 255 characters.'),
+    body('content')
+        .optional({ checkFalsy: false })
+        .isString().withMessage('Content must be a string if provided.'),
+    body('completed')
+        .optional()
+        .isBoolean().withMessage('Completed status must be a boolean if provided.'),
+    check().custom((value, { req }) => {
+        if (Object.keys(req.body).length === 0) {
+            throw new Error('No update data provided. At least one field (label, content, or completed) must be present for an update.');
+        }
+        const allowedFields = ['label', 'content', 'completed', 'direction'];
+        const unknownFields = Object.keys(req.body).filter(key => !allowedFields.includes(key));
+        if (unknownFields.length > 0) {
+            throw new Error(`Unknown field(s) in update request: ${unknownFields.join(', ')}`);
+        }
+        return true;
+    }),
+];
+
+// Validation for itemId parameter
+const itemIdParamValidation = [
+    param('itemId')
+        .trim()
+        .notEmpty().withMessage('Item ID path parameter is required.')
+        .isString().withMessage('Item ID must be a string.'),
+];
+
+// Validation for parentId parameter
+const parentIdParamValidation = [
+    param('parentId')
+        .trim()
+        .notEmpty().withMessage('Parent ID path parameter is required.')
+        .isString().withMessage('Parent ID must be a string.'),
+];
 
 /**
  * @openapi
@@ -62,7 +146,7 @@ router.get('/tree', getNotesTree);
  *                 type: array
  *                 items:
  *                   $ref: '#/components/schemas/Item'
- *                 description: The new tree structure.
+ *                 description: The new tree structure. Each item should conform to the Item schema, but IDs will be server-generated if not valid UUIDs. Timestamps will be handled by the server.
  *     responses:
  *       '200':
  *         description: Tree replaced successfully. Returns the new tree.
@@ -79,7 +163,7 @@ router.get('/tree', getNotesTree);
  *                   items:
  *                     $ref: '#/components/schemas/Item'
  *       '400':
- *         description: Invalid input (e.g., newTree is not an array).
+ *         description: Invalid input (e.g., newTree is not an array or items within are malformed).
  *         content:
  *           application/json:
  *             schema:
@@ -95,7 +179,30 @@ router.get('/tree', getNotesTree);
  *       '500':
  *         $ref: '#/components/responses/ServerError'
  */
-router.put('/tree', replaceUserTree);
+router.put(
+    '/tree',
+    [
+        body('newTree')
+            .isArray().withMessage('Invalid tree data: newTree must be an array.')
+            .custom((value) => {
+                if (!Array.isArray(value)) return true;
+                for (const item of value) {
+                    if (typeof item !== 'object' || item === null) {
+                        throw new Error('Each item in newTree must be an object.');
+                    }
+                    if (!item.hasOwnProperty('label') || typeof item.label !== 'string' || item.label.trim() === '') {
+                        throw new Error('Each item in newTree must have a non-empty label.');
+                    }
+                    if (!item.hasOwnProperty('type') || !['folder', 'note', 'task'].includes(item.type)) {
+                        throw new Error('Each item in newTree must have a valid type (folder, note, task).');
+                    }
+                }
+                return true;
+            }),
+    ],
+    validate,
+    replaceUserTree
+);
 
 /**
  * @openapi
@@ -128,7 +235,7 @@ router.put('/tree', replaceUserTree);
  *       '500':
  *         $ref: '#/components/responses/ServerError'
  */
-router.post('/', createItem);
+router.post('/', ...itemValidations, validate, createItem);
 
 /**
  * @openapi
@@ -171,7 +278,7 @@ router.post('/', createItem);
  *       '500':
  *         $ref: '#/components/responses/ServerError'
  */
-router.post('/:parentId', createItem);
+router.post('/:parentId', ...parentIdParamValidation, ...itemValidations, validate, createItem);
 
 /**
  * @openapi
@@ -193,7 +300,7 @@ router.post('/:parentId', createItem);
  *         example: note-456
  *     requestBody:
  *       required: true
- *       description: Fields to update. Include only the properties you want to change.
+ *       description: Fields to update. Include only the properties you want to change. At least one property must be provided.
  *       content:
  *         application/json:
  *           schema:
@@ -214,7 +321,7 @@ router.post('/:parentId', createItem);
  *       '500':
  *         $ref: '#/components/responses/ServerError'
  */
-router.patch('/:itemId', updateItem);
+router.patch('/:itemId', ...itemIdParamValidation, ...updateItemValidations, validate, updateItem);
 
 /**
  * @openapi
@@ -236,7 +343,7 @@ router.patch('/:itemId', updateItem);
  *         example: folder-123
  *     responses:
  *       '200':
- *         description: Item deleted successfully.
+ *         description: Item deleted successfully or item not found (considered successful deletion).
  *         content:
  *           application/json:
  *             schema:
@@ -245,13 +352,23 @@ router.patch('/:itemId', updateItem);
  *                 message:
  *                   type: string
  *                   example: Item deleted successfully.
+ *       '400':
+ *         description: Invalid Item ID format.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       '401':
  *         $ref: '#/components/responses/UnauthorizedError'
  *       '404':
- *         $ref: '#/components/responses/NotFoundError'
+ *         description: User not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       '500':
  *         $ref: '#/components/responses/ServerError'
  */
-router.delete('/:itemId', deleteItem);
+router.delete('/:itemId', ...itemIdParamValidation, validate, deleteItem);
 
 module.exports = router;
