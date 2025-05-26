@@ -21,7 +21,8 @@ describe('Auth API Endpoints', () => {
                     password: 'password123',
                 });
             expect(res.statusCode).toEqual(201);
-            expect(res.body).toHaveProperty('token');
+            expect(res.body).toHaveProperty('accessToken');
+            expect(res.body).toHaveProperty('refreshToken');
             expect(res.body).toHaveProperty('user');
             expect(res.body.user.email).toBe('registeruser@test.example.com');
             expect(res.body.user).not.toHaveProperty('password');
@@ -86,7 +87,8 @@ describe('Auth API Endpoints', () => {
         const loginUserPassword = 'password123';
 
         beforeEach(async () => {
-            await User.deleteMany({ email: loginUserEmail });
+            await User.deleteMany({ email: loginUserEmail }); // Clean up before test
+            // Register the user first
             await request(app)
                 .post('/api/auth/register')
                 .send({
@@ -103,7 +105,8 @@ describe('Auth API Endpoints', () => {
                     password: loginUserPassword,
                 });
             expect(res.statusCode).toEqual(200);
-            expect(res.body).toHaveProperty('token');
+            expect(res.body).toHaveProperty('accessToken');
+            expect(res.body).toHaveProperty('refreshToken');
             expect(res.body).toHaveProperty('user');
             expect(res.body.user.email).toBe(loginUserEmail);
         });

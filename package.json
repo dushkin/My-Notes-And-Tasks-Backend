@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "2.10.0",
-  "commitMessage": "Implement image upload security",
+  "version": "2.11.0",
+  "commitMessage": "Implement token expiration and refresh mechanisms for long-term sessions",
   "description": "",
   "main": "index.js",
   "scripts": {

@@ -11,7 +11,7 @@ const UPLOAD_DIR_FOR_TESTS = path.join(__dirname, '..', 'public', 'uploads', 'im
 const TEST_IMAGE_PATH_FOR_ITEMS_TEST = path.join(__dirname, 'test-image.png');
 
 describe('Items API Endpoints', () => {
-    let userToken;
+    let userToken; // This will now be the accessToken
     let userId;
     let userEmail;
 
@@ -47,10 +47,10 @@ describe('Items API Endpoints', () => {
             .post('/api/auth/register')
             .send({ email: userEmail, password: 'password123' });
 
-        if (!registerRes.body.token || !registerRes.body.user?._id) {
+        if (!registerRes.body.accessToken || !registerRes.body.user?._id) { // Changed from .token to .accessToken
             throw new Error("User registration failed in items test setup.");
         }
-        userToken = registerRes.body.token;
+        userToken = registerRes.body.accessToken; // Changed from .token to .accessToken
         userId = registerRes.body.user._id;
 
         const user = await User.findById(userId);

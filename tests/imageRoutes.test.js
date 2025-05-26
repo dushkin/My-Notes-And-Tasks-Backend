@@ -8,7 +8,7 @@ const UPLOAD_DIR_FOR_TESTS = path.join(__dirname, '..', 'public', 'uploads', 'im
 const TEST_IMAGE_PATH = path.join(__dirname, 'test-image.png');
 
 describe('Image API Endpoints (/api/images)', () => {
-    let userToken;
+    let userToken; // This will now be the accessToken
     let userId;
 
     beforeAll(async () => {
@@ -36,17 +36,16 @@ describe('Image API Endpoints (/api/images)', () => {
             .post('/api/auth/register')
             .send({ email: userEmail, password: 'password123' });
 
-        if (!registerRes.body.token || !registerRes.body.user?._id) {
+        if (!registerRes.body.accessToken || !registerRes.body.user?._id) { // Changed from .token to .accessToken
             throw new Error('User registration failed in image test setup.');
         }
-        userToken = registerRes.body.token;
+        userToken = registerRes.body.accessToken; // Changed from .token to .accessToken
         userId = registerRes.body.user._id;
     });
 
     afterEach(async () => {
         await User.deleteMany({ email: { $regex: /@test\.example\.com$/ } });
         try {
-            // Ensure directory exists before reading
             try {
                 await fs.access(UPLOAD_DIR_FOR_TESTS);
             } catch (e) {

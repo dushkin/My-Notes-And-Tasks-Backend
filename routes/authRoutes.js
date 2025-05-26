@@ -2,8 +2,15 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
-const { register, login } = require('../controllers/authController');
+const {
+    register,
+    login,
+    refreshToken,
+    logout,
+    logoutAll
+} = require('../controllers/authController');
 const authMiddleware = require('../middleware/authMiddleware');
+
 const router = express.Router();
 
 // Middleware to handle validation errors
@@ -28,10 +35,12 @@ const validate = (req, res, next) => {
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: process.env.NODE_ENV === 'test' ? 1000 : 10,
-    message: { error: 'Too many attempts from this IP, please try again after 15 minutes.' },
+    message: {
+        error: 'Too many attempts from this IP, please try again after 15 minutes.'
+    },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => req.ip,
+    keyGenerator: req => req.ip
 });
 
 /**
@@ -60,37 +69,26 @@ const authLimiter = rateLimit({
  *               password:
  *                 type: string
  *                 format: password
- *                 description: The user's password (minimum 6 characters).
+ *                 description: The user's password (minimum 8 characters).
  *                 example: Password123
- *               name:
- *                 type: string
- *                 description: The user's name (optional).
- *                 example: John Doe
  *     responses:
  *       '201':
- *         description: User registered successfully. Returns the user details and authentication token.
+ *         description: User registered successfully. Returns the user details, access token, and refresh token.
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 user:
- *                   type: object
- *                   properties:
- *                     id:
- *                       type: string
- *                       description: The user's unique ID.
- *                       example: 507f1f77bcf86cd799439011
- *                     email:
- *                       type: string
- *                       example: user@example.com
- *                     name:
- *                       type: string
- *                       example: John Doe
- *                 token:
+ *                 accessToken:
  *                   type: string
- *                   description: JWT token for authentication.
+ *                   description: JWT access token for authentication.
  *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *                 refreshToken:
+ *                   type: string
+ *                   description: JWT refresh token for obtaining new access tokens.
+ *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *                 user:
+ *                   $ref: '#/components/schemas/UserResponse'
  *       '400':
  *         description: Bad request (e.g., invalid email, weak password, or user already exists).
  *         content:
@@ -110,8 +108,8 @@ const authLimiter = rateLimit({
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-
-router.post('/register',
+router.post(
+    '/register',
     authLimiter,
     [
         body('email')
@@ -132,7 +130,7 @@ router.post('/register',
  *     tags:
  *       - Authentication
  *     summary: Log in a user
- *     description: Authenticates a user with email and password, returning a JWT token.
+ *     description: Authenticates a user with email and password, returning JWT access and refresh tokens.
  *     requestBody:
  *       required: true
  *       content:
@@ -155,29 +153,22 @@ router.post('/register',
  *                 example: Password123
  *     responses:
  *       '200':
- *         description: User logged in successfully. Returns the user details and authentication token.
+ *         description: User logged in successfully. Returns user details, access token, and refresh token.
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 user:
- *                   type: object
- *                   properties:
- *                     id:
- *                       type: string
- *                       description: The user's unique ID.
- *                       example: 507f1f77bcf86cd799439011
- *                     email:
- *                       type: string
- *                       example: user@example.com
- *                     name:
- *                       type: string
- *                       example: John Doe
- *                 token:
+ *                 accessToken:
  *                   type: string
- *                   description: JWT token for authentication.
+ *                   description: JWT access token for authentication.
  *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *                 refreshToken:
+ *                   type: string
+ *                   description: JWT refresh token for obtaining new access tokens.
+ *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *                 user:
+ *                   $ref: '#/components/schemas/UserResponse'
  *       '400':
  *         description: Bad request (e.g., missing email or password).
  *         content:
@@ -193,7 +184,6 @@ router.post('/register',
  *               properties:
  *                 error:
  *                   type: string
- *                   description: Description of the error.
  *                   example: Invalid email or password
  *       '429':
  *         description: Too many requests (rate limit exceeded).
@@ -208,8 +198,8 @@ router.post('/register',
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-
-router.post('/login',
+router.post(
+    '/login',
     authLimiter,
     [
         body('email')
@@ -223,8 +213,164 @@ router.post('/login',
     login
 );
 
+/**
+ * @openapi
+ * /auth/refresh-token:
+ *   post:
+ *     tags:
+ *       - Authentication
+ *     summary: Refresh an access token
+ *     description: Obtains a new access token and a new refresh token using a valid refresh token.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: The refresh token.
+ *     responses:
+ *       '200':
+ *         description: Tokens refreshed successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 accessToken:
+ *                   type: string
+ *                 refreshToken:
+ *                   type: string
+ *       '401':
+ *         description: Refresh token is missing.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '403':
+ *         description: Refresh token is invalid, expired, or revoked.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '500':
+ *         description: Server error during token refresh.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post('/refresh-token', refreshToken);
+
+/**
+ * @openapi
+ * /auth/logout:
+ *   post:
+ *     tags:
+ *       - Authentication
+ *     summary: Log out the current session
+ *     description: Invalidates the provided refresh token on the server-side.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refreshToken
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *     responses:
+ *       '200':
+ *         description: Logged out successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Logged out successfully.
+ *       '400':
+ *         description: Refresh token is missing in the request.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '500':
+ *         description: Server error during logout.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post('/logout', logout);
+
+/**
+ * @openapi
+ * /auth/logout-all:
+ *   post:
+ *     tags:
+ *       - Authentication
+ *     summary: Log out from all devices/sessions
+ *     description: Invalidates all refresh tokens for the currently authenticated user. Requires a valid access token.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       '200':
+ *         description: Logged out from all devices successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Logged out from all devices successfully.
+ *       '401':
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       '500':
+ *         description: Server error during logout from all devices.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post('/logout-all', authMiddleware, logoutAll);
+
+/**
+ * @openapi
+ * /auth/verify-token:
+ *   get:
+ *     tags:
+ *       - Authentication
+ *     summary: Verify access token validity
+ *     description: Checks if the current access token is valid. Requires a valid access token in the Authorization header.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       '200':
+ *         description: Token is valid.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 valid:
+ *                   type: boolean
+ *                   example: true
+ *                 user:
+ *                   $ref: '#/components/schemas/UserResponse'
+ *       '401':
+ *         $ref: '#/components/responses/UnauthorizedError'
+ */
 router.get('/verify-token', authMiddleware, (req, res) => {
-    res.status(200).json({ valid: true, user: req.user });
+    res.status(200).json({ valid: true, user: req.user.user });
 });
 
 module.exports = router;
