@@ -2,6 +2,7 @@ if (process.env.NODE_ENV !== 'test') {
   require('dotenv').config();
 }
 const express = require('express');
+const helmet = require('helmet');
 const cors = require('cors');
 const path = require('path');
 const cron = require('node-cron');
@@ -22,6 +23,7 @@ if (process.env.NODE_ENV !== 'test') {
 console.log('[server.js] After loading database connection');
 
 console.log('[server.js] Before loading middleware');
+app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -36,20 +38,18 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 console.log('[server.js] After loading routes');
 
 app.get('/', (req, res) => res.send('API Running'));
-
 app.use((err, req, res, next) => {
   console.error("[server.js] Global Error Handler:", err.stack || err.message || err);
   res.status(err.status || 500).json({
     error: err.message || 'An unexpected error occurred on the server.',
   });
 });
-
 const PORT = process.env.PORT || 5001;
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    console.log(`Uploaded images will be served from '/Uploads/images' (relative to server root, via 'public' static folder).`);
+    console.log(`Uploaded images will be served from '/uploads/images' (relative to server root, via 'public' static folder).`);
     console.log(`Ensure your frontend's API_BASE_URL for image uploads is correctly set to this server.`);
 
     cron.schedule('0 3 * * *', () => {

@@ -8,6 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const { cleanupOrphanedImages } = require('../services/orphanedFileCleanupService');
 
 const UPLOAD_DIR_FOR_TESTS = path.join(__dirname, '..', 'public', 'uploads', 'images');
+const TEST_IMAGE_PATH_FOR_ITEMS_TEST = path.join(__dirname, 'test-image.png');
 
 describe('Items API Endpoints', () => {
     let userToken;
@@ -15,6 +16,20 @@ describe('Items API Endpoints', () => {
     let userEmail;
 
     beforeAll(async () => {
+        // Ensure the dummy test image exists for this suite
+        try {
+            await fs.access(TEST_IMAGE_PATH_FOR_ITEMS_TEST);
+        } catch (error) {
+            await fs.writeFile(
+                TEST_IMAGE_PATH_FOR_ITEMS_TEST,
+                Buffer.from(
+                    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+                    'base64'
+                )
+            );
+        }
+
+        // Clear the UPLOAD_DIR_FOR_TESTS
         try {
             await fs.mkdir(UPLOAD_DIR_FOR_TESTS, { recursive: true });
             const files = await fs.readdir(UPLOAD_DIR_FOR_TESTS);
@@ -61,6 +76,8 @@ describe('Items API Endpoints', () => {
         } catch (err) {
             // console.warn("Warning: Could not clean up all test image files:", err.message);
         }
+        // Clean up the test-image.png created by this suite's beforeAll
+        // await fs.unlink(TEST_IMAGE_PATH_FOR_ITEMS_TEST).catch(() => {});
     });
 
     const isValidISODateString = (dateString) => {
@@ -93,6 +110,7 @@ describe('Items API Endpoints', () => {
                 expect(isValidISODateString(itemFromServer.updatedAt)).toBe(true);
             }
         });
+
         it('should return 401 if no token is provided', async () => {
             const res = await request(app).get('/api/items/tree');
             expect(res.statusCode).toEqual(401);
@@ -127,7 +145,6 @@ describe('Items API Endpoints', () => {
                 .set('Authorization', `Bearer ${userToken}`)
                 .send({ type: 'folder' });
             expect(res.statusCode).toEqual(400);
-            // Corrected to match observed concatenated error
             expect(res.body.error).toBe('Label is required., Label must be between 1 and 255 characters.');
         });
 
@@ -139,7 +156,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Label is required., Label must be between 1 and 255 characters.');
         });
-
 
         it('should return 400 for missing or invalid type', async () => {
             let res = await request(app)
@@ -171,10 +187,9 @@ describe('Items API Endpoints', () => {
                 .post('/api/items')
                 .set('Authorization', `Bearer ${userToken}`)
                 .send({ label: 'Task with bad completed', type: 'task', completed: 'true_string' });
-            expect(res.statusCode).toEqual(400); 
+            expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Completed status must be a boolean.');
         });
-
 
         it('should return 400 if root item with same name exists', async () => {
             await request(app).post('/api/items').set('Authorization', `Bearer ${userToken}`).send({ label: 'Unique Root', type: 'folder' });
@@ -202,14 +217,13 @@ describe('Items API Endpoints', () => {
         });
 
         it('should return 400 if parentId in path is invalid format (e.g. empty string submitted as space)', async () => {
-             const res = await request(app)
-                .post('/api/items/%20') 
+            const res = await request(app)
+                .post('/api/items/%20')
                 .set('Authorization', `Bearer ${userToken}`)
                 .send({ label: 'Child Note', type: 'note', content: '' });
-            expect(res.statusCode).toEqual(400); 
+            expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Parent ID path parameter is required.');
         });
-
 
         it('should return 400 if child item with same name exists in parent', async () => {
             await request(app).post(`/api/items/${rootFolderIdBeforeChildTest}`).set('Authorization', `Bearer ${userToken}`).send({ label: 'Child Item', type: 'note', content: '' });
@@ -228,10 +242,10 @@ describe('Items API Endpoints', () => {
                 .post('/api/items')
                 .set('Authorization', `Bearer ${userToken}`)
                 .send({ label: 'Original Note To Patch', type: 'note', content: 'Original content' });
-            
+
             noteIdToPatch = initialItemRes.body.id;
             originalTimestamps = { createdAt: initialItemRes.body.createdAt, updatedAt: initialItemRes.body.updatedAt };
-            await new Promise(resolve => setTimeout(resolve, 20)); 
+            await new Promise(resolve => setTimeout(resolve, 20));
         });
 
         it('should update an item label', async () => {
@@ -262,8 +276,8 @@ describe('Items API Endpoints', () => {
         });
 
         it('should return 400 if itemId is invalid format', async () => {
-             const res = await request(app)
-                .patch('/api/items/%20') 
+            const res = await request(app)
+                .patch('/api/items/%20')
                 .set('Authorization', `Bearer ${userToken}`)
                 .send({ label: 'Updated Label' });
             expect(res.statusCode).toEqual(400);
@@ -272,7 +286,7 @@ describe('Items API Endpoints', () => {
 
         it('should return 404 if item to update is not found', async () => {
             const res = await request(app).patch(`/api/items/nonexistentitemid-${uuidv4()}`).set('Authorization', `Bearer ${userToken}`).send({ label: 'Does not matter' });
-            expect(res.statusCode).toEqual(404); 
+            expect(res.statusCode).toEqual(404);
         });
 
         it('should return 400 if no update data is provided', async () => {
@@ -301,7 +315,7 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Content must be a string if provided.');
         });
-        
+
         it('should allow explicitly setting content to empty string', async () => {
             const res = await request(app)
                 .patch(`/api/items/${noteIdToPatch}`)
@@ -322,10 +336,10 @@ describe('Items API Endpoints', () => {
 
         it('should return 400 if trying to rename to an existing sibling name', async () => {
             await request(app).post('/api/items').set('Authorization', `Bearer ${userToken}`)
-                .send({label: 'Sibling A', type: 'note', content: ''});
-            
+                .send({ label: 'Sibling A', type: 'note', content: '' });
+
             const res = await request(app).patch(`/api/items/${noteIdToPatch}`).set('Authorization', `Bearer ${userToken}`).send({ label: 'Sibling A' });
-            expect(res.statusCode).toEqual(400); 
+            expect(res.statusCode).toEqual(400);
             expect(res.body.error).toContain('already exists in this location');
         });
     });
@@ -335,7 +349,7 @@ describe('Items API Endpoints', () => {
         beforeEach(async () => {
             const folderRes = await request(app).post('/api/items').set('Authorization', `Bearer ${userToken}`).send({ label: 'Folder to Delete', type: 'folder' });
             folderIdToDelete = folderRes.body.id;
-            await request(app).post(`/api/items/${folderIdToDelete}`).set('Authorization', `Bearer ${userToken}`).send({ label: 'Child Note in Delete', type: 'note', content:'' });
+            await request(app).post(`/api/items/${folderIdToDelete}`).set('Authorization', `Bearer ${userToken}`).send({ label: 'Child Note in Delete', type: 'note', content: '' });
         });
 
         it('should delete an item (and its children if folder)', async () => {
@@ -348,7 +362,7 @@ describe('Items API Endpoints', () => {
 
         it('should return 400 if itemId is invalid format for delete', async () => {
             const res = await request(app)
-                .delete('/api/items/%20') 
+                .delete('/api/items/%20')
                 .set('Authorization', `Bearer ${userToken}`);
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Item ID path parameter is required.');
@@ -356,7 +370,7 @@ describe('Items API Endpoints', () => {
 
         it('should return 200 with message if item to delete is not found (controller logic)', async () => {
             const res = await request(app).delete(`/api/items/nonexistentitemid-${uuidv4()}`).set('Authorization', `Bearer ${userToken}`);
-            expect(res.statusCode).toBe(200); 
+            expect(res.statusCode).toBe(200);
             expect(res.body.message).toBe('Item not found or already deleted.');
         });
     });
@@ -388,7 +402,7 @@ describe('Items API Endpoints', () => {
         });
 
         it('should return 400 if an item in newTree is malformed (e.g., missing label)', async () => {
-            const newTree = [{ type: 'folder' }]; 
+            const newTree = [{ type: 'folder' }];
             const res = await request(app)
                 .put('/api/items/tree')
                 .set('Authorization', `Bearer ${userToken}`)
@@ -408,19 +422,18 @@ describe('Items API Endpoints', () => {
         });
     });
 
-
     describe('POST /api/images/upload', () => {
         it('should upload an image successfully', async () => {
             const res = await request(app)
                 .post('/api/images/upload')
-                .set('Authorization', `Bearer ${userToken}`) 
-                .attach('image', path.join(__dirname, 'test-image.png'));
+                .set('Authorization', `Bearer ${userToken}`)
+                .attach('image', TEST_IMAGE_PATH_FOR_ITEMS_TEST);
 
             expect(res.statusCode).toEqual(201);
             expect(res.body).toHaveProperty('url');
             expect(res.body.url).toMatch(/^http:\/\/(localhost|127\.0\.0\.1):\d{4,5}\/uploads\/images\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\.png$/);
 
-            const filename = path.basename(new URL(res.body.url).pathname); 
+            const filename = path.basename(new URL(res.body.url).pathname);
             const filePath = path.join(UPLOAD_DIR_FOR_TESTS, filename);
             await expect(fs.access(filePath)).resolves.toBeUndefined();
         });
@@ -429,7 +442,7 @@ describe('Items API Endpoints', () => {
             const res = await request(app)
                 .post('/api/images/upload')
                 .set('Authorization', `Bearer ${userToken}`)
-                .send({}); 
+                .send({});
             expect(res.statusCode).toEqual(400);
             expect(res.body.message).toContain('No image file uploaded or file type not allowed.');
         });
@@ -440,11 +453,11 @@ describe('Items API Endpoints', () => {
                 .set('Authorization', `Bearer ${userToken}`)
                 .attach('image', Buffer.from('this is not an image'), 'test.txt');
             expect(res.statusCode).toEqual(400);
-            expect(res.body.message).toBe('File is not an image.'); 
+            expect(res.body.message).toBe('File is not an image.');
         });
 
         it('should return 413 if image is too large', async () => {
-            const largeBuffer = Buffer.alloc(11 * 1024 * 1024, 'a'); 
+            const largeBuffer = Buffer.alloc(11 * 1024 * 1024, 'a');
             const res = await request(app)
                 .post('/api/images/upload')
                 .set('Authorization', `Bearer ${userToken}`)
@@ -465,9 +478,9 @@ describe('Items API Endpoints', () => {
             const imageUploadRes = await request(app)
                 .post('/api/images/upload')
                 .set('Authorization', `Bearer ${userToken}`)
-                .attach('image', path.join(__dirname, 'test-image.png')); 
-            
-            expect(imageUploadRes.statusCode).toBe(201); 
+                .attach('image', TEST_IMAGE_PATH_FOR_ITEMS_TEST);
+
+            expect(imageUploadRes.statusCode).toBe(201);
             const usedImageUrl = imageUploadRes.body.url;
 
             const noteCreationRes = await request(app)
@@ -478,11 +491,11 @@ describe('Items API Endpoints', () => {
                     type: 'note',
                     content: `<p>Test</p><img src="${usedImageUrl}" />`
                 });
-            expect(noteCreationRes.statusCode).toBe(201); 
+            expect(noteCreationRes.statusCode).toBe(201);
 
             await cleanupOrphanedImages();
 
-            await expect(fs.access(orphanedImagePath)).rejects.toThrow(/ENOENT/); 
+            await expect(fs.access(orphanedImagePath)).rejects.toThrow(/ENOENT/);
 
             const usedImageFilename = path.basename(new URL(usedImageUrl).pathname);
             await expect(fs.access(path.join(UPLOAD_DIR_FOR_TESTS, usedImageFilename))).resolves.toBeUndefined();

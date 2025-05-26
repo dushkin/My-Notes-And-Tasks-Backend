@@ -34,7 +34,7 @@ function addMissingTimestampsToTree(nodes, defaultTimestamp) {
 // --- Get Full Tree ---
 exports.getNotesTree = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.user.id);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
         let treeToReturn = user.notesTree || [];
@@ -61,7 +61,7 @@ exports.createItem = async (req, res) => {
     const trimmedLabel = label;
 
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.user.id);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
         let currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
@@ -147,7 +147,7 @@ exports.updateItem = async (req, res) => {
     // More specific value checks (e.g., label not null/empty if provided) also handled by validator.
 
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.user.id);
         if (!user) {
             console.error(`Backend: updateItem - User not found for ID: ${req.user.id}`);
             return res.status(404).json({ error: 'User not found' });
@@ -254,7 +254,7 @@ exports.deleteItem = async (req, res) => {
     const { itemId } = req.params; // Validated by express-validator
 
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.user.id);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
         let currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
@@ -281,7 +281,7 @@ exports.replaceUserTree = async (req, res) => {
     const { newTree } = req.body; // Validated by express-validator (isArray and basic item structure)
 
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.user.id);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
         // ensureServerSideIdsAndStructure will handle deeper structural integrity, ID generation, and timestamps

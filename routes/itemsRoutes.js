@@ -367,59 +367,58 @@ router.post('/:parentId', generalItemLimiter, ...parentIdParamValidation, ...ite
  */
 router.patch('/:itemId', generalItemLimiter, ...itemIdParamValidation, ...updateItemValidations, validate, updateItem);
 
-// Commented DELETE route preserved as in original
-// /**
-//  * @openapi
-//  * /items/{itemId}:
-//  *   delete:
-//  *     tags:
-//  *       - Items
-//  *     summary: Delete an item
-//  *     description: Deletes an item (and all its children if it's a folder).
-//  *     security:
-//  *       - bearerAuth: []
-//  *     parameters:
-//  *       - in: path
-//  *         name: itemId
-//  *         schema:
-//  *           type: string
-//  *         required: true
-//  *         description: The ID of the item to delete.
-//  *         example: folder-123
-//  *     responses:
-//  *       '200':
-//  *         description: Item deleted successfully.
-//  *         content:
-//  *           application/json:
-//  *             schema:
-//  *               type: object
-//  *               properties:
-//  *                 message:
-//  *                   type: string
-//  *                   example: Item deleted successfully.
-//  *       '400':
-//  *         description: Invalid Item ID format.
-//  *         content:
-//  *           application/json:
-//  *             schema:
-//  *               $ref: '#/components/schemas/ErrorResponse'
-//  *       '401':
-//  *         $ref: '#/components/responses/UnauthorizedError'
-//  *       '404':
-//  *         description: User not found.
-//  *         content:
-//  *           application/json:
-//  *             schema:
-//  *               $ref: '#/components/schemas/ErrorResponse'
-//  *       '429':
-//  *         description: Too many requests.
-//  *         content:
-//  *           application/json:
-//  *             schema:
-//  *               $ref: '#/components/schemas/ErrorResponse'
-//  *       '500':
-//  *         $ref: '#/components/responses/ServerError'
-//  */
-// router.delete('/:itemId', generalItemLimiter, ...itemIdParamValidation, validate, deleteItem);
+/**
+ * @openapi
+ * /items/{itemId}:
+ *   delete:
+ *     tags:
+ *       - Items
+ *     summary: Delete an item
+ *     description: Deletes an item (and all its children if it's a folder).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: itemId
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: The ID of the item to delete.
+ *         example: folder-123
+ *     responses:
+ *       '200':
+ *         description: Item deleted successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Item deleted successfully.
+ *       '400':
+ *         description: Invalid Item ID format.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '401':
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       '404':
+ *         description: User not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '429':
+ *         description: Too many requests.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '500':
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.delete('/:itemId', generalItemLimiter, ...itemIdParamValidation, validate, deleteItem);
 
 module.exports = router;

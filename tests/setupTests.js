@@ -22,7 +22,7 @@ const http = require('http');
 let mongod;
 let server;
 
-const UPLOAD_DIR_FOR_TESTS = path.join(__dirname, '..', 'public', 'Uploads', 'images');
+const UPLOAD_DIR_FOR_TESTS = path.join(__dirname, '..', 'public', 'uploads', 'images');
 
 beforeAll(async () => {
     // Explicitly clear JWT_SECRET
