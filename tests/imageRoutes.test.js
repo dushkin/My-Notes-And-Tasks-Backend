@@ -46,7 +46,12 @@ describe('Image API Endpoints (/api/images)', () => {
     afterEach(async () => {
         await User.deleteMany({ email: { $regex: /@test\.example\.com$/ } });
         try {
-            await fs.mkdir(UPLOAD_DIR_FOR_TESTS, { recursive: true });
+            // Ensure directory exists before reading
+            try {
+                await fs.access(UPLOAD_DIR_FOR_TESTS);
+            } catch (e) {
+                await fs.mkdir(UPLOAD_DIR_FOR_TESTS, { recursive: true });
+            }
             const files = await fs.readdir(UPLOAD_DIR_FOR_TESTS);
             for (const file of files) {
                 if (file !== '.gitkeep') {
@@ -96,7 +101,7 @@ describe('Image API Endpoints (/api/images)', () => {
                 .post('/api/images/upload')
                 .set('Authorization', `Bearer ${userToken}`);
             expect(res.statusCode).toEqual(400);
-            expect(res.body.message).toContain('No image file uploaded');
+            expect(res.body.message).toBe('No image file uploaded or file type not allowed by initial filter.');
         }, 20000);
 
         it('should return 400 if the uploaded file is not an image', async () => {
@@ -108,7 +113,7 @@ describe('Image API Endpoints (/api/images)', () => {
                     contentType: 'text/plain',
                 });
             expect(res.statusCode).toEqual(400);
-            expect(res.body.message).toBe('File is not an image.');
+            expect(res.body.message).toBe('File is not an image based on mimetype.');
         }, 20000);
 
         it('should return 413 if the image file is too large', async () => {

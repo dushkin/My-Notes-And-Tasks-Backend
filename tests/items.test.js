@@ -16,7 +16,6 @@ describe('Items API Endpoints', () => {
     let userEmail;
 
     beforeAll(async () => {
-        // Ensure the dummy test image exists for this suite
         try {
             await fs.access(TEST_IMAGE_PATH_FOR_ITEMS_TEST);
         } catch (error) {
@@ -29,7 +28,6 @@ describe('Items API Endpoints', () => {
             );
         }
 
-        // Clear the UPLOAD_DIR_FOR_TESTS
         try {
             await fs.mkdir(UPLOAD_DIR_FOR_TESTS, { recursive: true });
             const files = await fs.readdir(UPLOAD_DIR_FOR_TESTS);
@@ -76,8 +74,11 @@ describe('Items API Endpoints', () => {
         } catch (err) {
             // console.warn("Warning: Could not clean up all test image files:", err.message);
         }
-        // Clean up the test-image.png created by this suite's beforeAll
-        // await fs.unlink(TEST_IMAGE_PATH_FOR_ITEMS_TEST).catch(() => {});
+        try {
+            await fs.unlink(TEST_IMAGE_PATH_FOR_ITEMS_TEST);
+        } catch (error) {
+            // console.warn("Could not delete items.test.js test-image.png", error.message)
+        }
     });
 
     const isValidISODateString = (dateString) => {
@@ -110,7 +111,6 @@ describe('Items API Endpoints', () => {
                 expect(isValidISODateString(itemFromServer.updatedAt)).toBe(true);
             }
         });
-
         it('should return 401 if no token is provided', async () => {
             const res = await request(app).get('/api/items/tree');
             expect(res.statusCode).toEqual(401);
@@ -147,7 +147,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Label is required., Label must be between 1 and 255 characters.');
         });
-
         it('should return 400 for empty label string', async () => {
             const res = await request(app)
                 .post('/api/items')
@@ -156,7 +155,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Label is required., Label must be between 1 and 255 characters.');
         });
-
         it('should return 400 for missing or invalid type', async () => {
             let res = await request(app)
                 .post('/api/items')
@@ -172,7 +170,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Invalid item type. Must be folder, note, or task.');
         });
-
         it('should return 400 if content is not a string when provided', async () => {
             const res = await request(app)
                 .post('/api/items')
@@ -181,7 +178,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Content must be a string.');
         });
-
         it('should return 400 if completed is not a boolean when provided', async () => {
             const res = await request(app)
                 .post('/api/items')
@@ -190,7 +186,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Completed status must be a boolean.');
         });
-
         it('should return 400 if root item with same name exists', async () => {
             await request(app).post('/api/items').set('Authorization', `Bearer ${userToken}`).send({ label: 'Unique Root', type: 'folder' });
             const res = await request(app).post('/api/items').set('Authorization', `Bearer ${userToken}`).send({ label: 'Unique Root', type: 'note' });
@@ -215,7 +210,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(404);
             expect(res.body.error).toBe('Parent folder not found or item is not a folder.');
         });
-
         it('should return 400 if parentId in path is invalid format (e.g. empty string submitted as space)', async () => {
             const res = await request(app)
                 .post('/api/items/%20')
@@ -224,7 +218,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Parent ID path parameter is required.');
         });
-
         it('should return 400 if child item with same name exists in parent', async () => {
             await request(app).post(`/api/items/${rootFolderIdBeforeChildTest}`).set('Authorization', `Bearer ${userToken}`).send({ label: 'Child Item', type: 'note', content: '' });
             const res = await request(app).post(`/api/items/${rootFolderIdBeforeChildTest}`).set('Authorization', `Bearer ${userToken}`).send({ label: 'Child Item', type: 'task', content: '' });
@@ -255,14 +248,12 @@ describe('Items API Endpoints', () => {
             expect(res.body.createdAt).toBe(originalTimestamps.createdAt);
             expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThan(new Date(originalTimestamps.updatedAt).getTime());
         });
-
         it('should update item content', async () => {
             const res = await request(app).patch(`/api/items/${noteIdToPatch}`).set('Authorization', `Bearer ${userToken}`).send({ content: '<p>Updated content Patch</p>' });
             expect(res.statusCode).toEqual(200);
             expect(res.body.content).toBe('<p>Updated content Patch</p>');
             expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThan(new Date(originalTimestamps.updatedAt).getTime());
         });
-
         it('should update task completion status', async () => {
             const taskRes = await request(app).post('/api/items').set('Authorization', `Bearer ${userToken}`).send({ label: 'Task to complete Patch', type: 'task', completed: false, content: '' });
             const taskId = taskRes.body.id;
@@ -274,7 +265,6 @@ describe('Items API Endpoints', () => {
             expect(res.body.completed).toBe(true);
             expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThan(new Date(taskOriginalUpdatedAt).getTime());
         });
-
         it('should return 400 if itemId is invalid format', async () => {
             const res = await request(app)
                 .patch('/api/items/%20')
@@ -283,12 +273,10 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Item ID path parameter is required.');
         });
-
         it('should return 404 if item to update is not found', async () => {
             const res = await request(app).patch(`/api/items/nonexistentitemid-${uuidv4()}`).set('Authorization', `Bearer ${userToken}`).send({ label: 'Does not matter' });
             expect(res.statusCode).toEqual(404);
         });
-
         it('should return 400 if no update data is provided', async () => {
             const res = await request(app)
                 .patch(`/api/items/${noteIdToPatch}`)
@@ -297,7 +285,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toContain('No update data provided.');
         });
-
         it('should return 400 for invalid label in update (e.g., empty after trim)', async () => {
             const res = await request(app)
                 .patch(`/api/items/${noteIdToPatch}`)
@@ -306,7 +293,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Label cannot be empty if provided., Label must be between 1 and 255 characters.');
         });
-
         it('should return 400 for invalid content type in update', async () => {
             const res = await request(app)
                 .patch(`/api/items/${noteIdToPatch}`)
@@ -315,7 +301,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Content must be a string if provided.');
         });
-
         it('should allow explicitly setting content to empty string', async () => {
             const res = await request(app)
                 .patch(`/api/items/${noteIdToPatch}`)
@@ -324,7 +309,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(200);
             expect(res.body.content).toBe("");
         });
-
         it('should return 400 for unknown fields in update request', async () => {
             const res = await request(app)
                 .patch(`/api/items/${noteIdToPatch}`)
@@ -333,7 +317,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toContain('Unknown field(s) in update request: unknownField');
         });
-
         it('should return 400 if trying to rename to an existing sibling name', async () => {
             await request(app).post('/api/items').set('Authorization', `Bearer ${userToken}`)
                 .send({ label: 'Sibling A', type: 'note', content: '' });
@@ -359,7 +342,6 @@ describe('Items API Endpoints', () => {
             const user = await User.findById(userId);
             expect(user.notesTree.find(item => item.id === folderIdToDelete)).toBeUndefined();
         });
-
         it('should return 400 if itemId is invalid format for delete', async () => {
             const res = await request(app)
                 .delete('/api/items/%20')
@@ -367,7 +349,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Item ID path parameter is required.');
         });
-
         it('should return 200 with message if item to delete is not found (controller logic)', async () => {
             const res = await request(app).delete(`/api/items/nonexistentitemid-${uuidv4()}`).set('Authorization', `Bearer ${userToken}`);
             expect(res.statusCode).toBe(200);
@@ -385,7 +366,6 @@ describe('Items API Endpoints', () => {
             expect(res.body.notesTree[0].id).not.toBe('client-f1');
             expect(res.body.notesTree[0].id).toMatch(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
         });
-
         it('should replace the entire user tree and keep existing valid server-generated IDs', async () => {
             const existingServerId = uuidv4();
             const newTree = [{ id: existingServerId, type: 'folder', label: 'Folder with Server ID', children: [] }];
@@ -394,13 +374,11 @@ describe('Items API Endpoints', () => {
             expect(res.body.notesTree.length).toBe(1);
             expect(res.body.notesTree[0].id).toBe(existingServerId);
         });
-
         it('should return 400 if newTree is not an array', async () => {
             const res = await request(app).put('/api/items/tree').set('Authorization', `Bearer ${userToken}`).send({ newTree: { id: 'not-an-array' } });
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Invalid tree data: newTree must be an array.');
         });
-
         it('should return 400 if an item in newTree is malformed (e.g., missing label)', async () => {
             const newTree = [{ type: 'folder' }];
             const res = await request(app)
@@ -410,7 +388,6 @@ describe('Items API Endpoints', () => {
             expect(res.statusCode).toEqual(400);
             expect(res.body.error).toBe('Each item in newTree must have a non-empty label.');
         });
-
         it('should return 400 if an item in newTree has invalid type', async () => {
             const newTree = [{ label: 'Bad Type Item', type: 'invalid' }];
             const res = await request(app)
@@ -444,7 +421,7 @@ describe('Items API Endpoints', () => {
                 .set('Authorization', `Bearer ${userToken}`)
                 .send({});
             expect(res.statusCode).toEqual(400);
-            expect(res.body.message).toContain('No image file uploaded or file type not allowed.');
+            expect(res.body.message).toBe('No image file uploaded or file type not allowed by initial filter.');
         });
 
         it('should return 400 if the uploaded file is not an image', async () => {
@@ -453,7 +430,7 @@ describe('Items API Endpoints', () => {
                 .set('Authorization', `Bearer ${userToken}`)
                 .attach('image', Buffer.from('this is not an image'), 'test.txt');
             expect(res.statusCode).toEqual(400);
-            expect(res.body.message).toBe('File is not an image.');
+            expect(res.body.message).toBe('File is not an image based on mimetype.');
         });
 
         it('should return 413 if image is too large', async () => {

@@ -21,11 +21,9 @@ const http = require('http');
 
 let mongod;
 let server;
-
 const UPLOAD_DIR_FOR_TESTS = path.join(__dirname, '..', 'public', 'uploads', 'images');
 
 beforeAll(async () => {
-    // Explicitly clear JWT_SECRET
     delete process.env.JWT_SECRET;
     process.env.JWT_SECRET = 'testsecretkey123';
 
@@ -47,7 +45,6 @@ beforeAll(async () => {
     await new Promise((resolve) => server.listen(0, resolve));
     console.log('[setupTests.js] Test server started');
 
-    // Add delay to ensure server is fully initialized
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     try {
@@ -76,14 +73,9 @@ afterAll(async () => {
         console.log('[setupTests.js] Test server stopped');
     }
     try {
-        const files = await fs.readdir(UPLOAD_DIR_FOR_TESTS);
-        for (const file of files) {
-            if (file !== '.gitkeep') {
-                await fs.unlink(path.join(UPLOAD_DIR_FOR_TESTS, file));
-            }
-        }
+        await fs.rm(UPLOAD_DIR_FOR_TESTS, { recursive: true, force: true });
     } catch (err) {
-        console.warn('[setupTests.js] Could not clean up test image files:', err.message);
+        console.warn('[setupTests.js] Warning during cleanup of test image files:', err.message);
     }
 });
 
