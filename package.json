@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "2.7.0",
-  "commitMessage": "Implement comprehensive input validation using express-validator",
+  "version": "2.8.0",
+  "commitMessage": "Implement rate limiting to protect API endpoints from abuse; Extend tests",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -18,6 +18,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
     "express-validator": "^7.2.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.14.1",

@@ -1,12 +1,6 @@
-// utils/jwt.js
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h'; // Default expiration
-
-if (!JWT_SECRET) {
-    throw new Error('FATAL ERROR: JWT_SECRET is not defined in environment variables.');
-}
 
 /**
  * Generates a JWT for a given user ID.
@@ -17,12 +11,15 @@ const generateToken = (userId) => {
     if (!userId) {
         throw new Error('User ID is required to generate a token.');
     }
+    if (!process.env.JWT_SECRET) {
+        throw new Error('JWT_SECRET is not defined in environment variables.');
+    }
     const payload = {
         user: {
             id: userId,
         },
     };
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 };
 
 /**
@@ -34,8 +31,11 @@ const verifyToken = (token) => {
     if (!token) {
         return null;
     }
+    if (!process.env.JWT_SECRET) {
+        throw new Error('JWT_SECRET is not defined in environment variables.');
+    }
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         return decoded;
     } catch (err) {
         console.error('JWT Verification Error:', err.message);

@@ -1,7 +1,9 @@
 // routes/authRoutes.js
 const express = require('express');
 const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 const { register, login } = require('../controllers/authController');
+const authMiddleware = require('../middleware/authMiddleware');
 const router = express.Router();
 
 // Middleware to handle validation errors
@@ -22,41 +24,95 @@ const validate = (req, res, next) => {
     next();
 };
 
+// Rate limiter for authentication routes
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: process.env.NODE_ENV === 'test' ? 1000 : 10,
+    message: { error: 'Too many attempts from this IP, please try again after 15 minutes.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.ip,
+});
+
 /**
  * @openapi
  * /auth/register:
- * post:
- * tags:
- * - Auth
- * summary: Register a new user
- * description: Creates a new user account with the provided email and password.
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * $ref: '#/components/schemas/UserInput'
- * responses:
- * '201':
- * description: User registered successfully. Returns JWT token and user object.
- * content:
- * application/json:
- * schema:
- * $ref: '#/components/schemas/AuthResponse'
- * '400':
- * description: Invalid input (e.g., missing fields, invalid email, weak password, email already exists).
- * content:
- * application/json:
- * schema:
- * $ref: '#/components/schemas/ErrorResponse'
- * '500':
- * description: Server error during registration.
- * content:
- * application/json:
- * schema:
- * $ref: '#/components/schemas/ErrorResponse'
+ *   post:
+ *     tags:
+ *       - Authentication
+ *     summary: Register a new user
+ *     description: Creates a new user account with the provided email and password.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: The user's email address.
+ *                 example: user@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: The user's password (minimum 6 characters).
+ *                 example: Password123
+ *               name:
+ *                 type: string
+ *                 description: The user's name (optional).
+ *                 example: John Doe
+ *     responses:
+ *       '201':
+ *         description: User registered successfully. Returns the user details and authentication token.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       description: The user's unique ID.
+ *                       example: 507f1f77bcf86cd799439011
+ *                     email:
+ *                       type: string
+ *                       example: user@example.com
+ *                     name:
+ *                       type: string
+ *                       example: John Doe
+ *                 token:
+ *                   type: string
+ *                   description: JWT token for authentication.
+ *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *       '400':
+ *         description: Bad request (e.g., invalid email, weak password, or user already exists).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '429':
+ *         description: Too many requests (rate limit exceeded).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '500':
+ *         description: Server error during registration.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
+
 router.post('/register',
+    authLimiter,
     [
         body('email')
             .trim()
@@ -72,44 +128,89 @@ router.post('/register',
 /**
  * @openapi
  * /auth/login:
- * post:
- * tags:
- * - Auth
- * summary: Login a user
- * description: Authenticates a user with email and password, returning a JWT token upon success.
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * $ref: '#/components/schemas/UserInput'
- * responses:
- * '200':
- * description: Login successful. Returns JWT token and user object.
- * content:
- * application/json:
- * schema:
- * $ref: '#/components/schemas/AuthResponse'
- * '400':
- * description: Bad Request - Invalid email format or missing password.
- * content:
- * application/json:
- * schema:
- * $ref: '#/components/schemas/ErrorResponse'
- * '401':
- * description: Unauthorized - Invalid credentials.
- * content:
- * application/json:
- * schema:
- * $ref: '#/components/schemas/ErrorResponse'
- * '500':
- * description: Server error during login.
- * content:
- * application/json:
- * schema:
- * $ref: '#/components/schemas/ErrorResponse'
+ *   post:
+ *     tags:
+ *       - Authentication
+ *     summary: Log in a user
+ *     description: Authenticates a user with email and password, returning a JWT token.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: The user's email address.
+ *                 example: user@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: The user's password.
+ *                 example: Password123
+ *     responses:
+ *       '200':
+ *         description: User logged in successfully. Returns the user details and authentication token.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       description: The user's unique ID.
+ *                       example: 507f1f77bcf86cd799439011
+ *                     email:
+ *                       type: string
+ *                       example: user@example.com
+ *                     name:
+ *                       type: string
+ *                       example: John Doe
+ *                 token:
+ *                   type: string
+ *                   description: JWT token for authentication.
+ *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *       '400':
+ *         description: Bad request (e.g., missing email or password).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '401':
+ *         description: Unauthorized - Invalid email or password.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   description: Description of the error.
+ *                   example: Invalid email or password
+ *       '429':
+ *         description: Too many requests (rate limit exceeded).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '500':
+ *         description: Server error during login.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
+
 router.post('/login',
+    authLimiter,
     [
         body('email')
             .trim()
@@ -121,5 +222,9 @@ router.post('/login',
     validate,
     login
 );
+
+router.get('/verify-token', authMiddleware, (req, res) => {
+    res.status(200).json({ valid: true, user: req.user });
+});
 
 module.exports = router;

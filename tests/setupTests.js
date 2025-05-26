@@ -1,54 +1,80 @@
-// tests/setupTests.js
+// Clear cached modules to prevent .env interference
+Object.keys(require.cache).forEach((key) => {
+    if (key.includes('dotenv') || key.includes('server.js') || key.includes('config/db.js') || key.includes('jwt.js') || key.includes('authController.js')) {
+        delete require.cache[key];
+    }
+});
+
+// Set environment variables for tests BEFORE anything else
+process.env.NODE_ENV = 'test';
+process.env.JWT_SECRET = 'testsecretkey123';
+process.env.BCRYPT_SALT_ROUNDS = '8';
+
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const connectDB = require('../config/db');
 const User = require('../models/User');
-const fs = require('fs').promises; // For file system operations
-const path = require('path');     // For path joining
+const fs = require('fs').promises;
+const path = require('path');
+const app = require('../server');
+const http = require('http');
 
 let mongod;
+let server;
 
-// Define UPLOAD_DIR for test cleanup, consistent with items.test.js
-const UPLOAD_DIR_FOR_TESTS = path.join(__dirname, '..', 'public', 'uploads', 'images');
-
+const UPLOAD_DIR_FOR_TESTS = path.join(__dirname, '..', 'public', 'Uploads', 'images');
 
 beforeAll(async () => {
+    // Explicitly clear JWT_SECRET
+    delete process.env.JWT_SECRET;
+    process.env.JWT_SECRET = 'testsecretkey123';
+
     mongod = await MongoMemoryServer.create();
     const uri = mongod.getUri();
-    process.env.DATABASE_URL = uri; // Set for connectDB
-    process.env.JWT_SECRET = 'testsecretkey'; // Ensure JWT_SECRET is set for tests
-    process.env.BCRYPT_SALT_ROUNDS = '8'; // Use fewer salt rounds for faster tests
+    process.env.DATABASE_URL = uri;
 
     try {
         await connectDB();
+        if (mongoose.connection.readyState !== 1) {
+            throw new Error('MongoDB connection not established');
+        }
     } catch (e) {
         console.error('[setupTests.js] FATAL: Failed to connect to In-Memory DB:', e);
-        process.exit(1); // Exit if DB connection fails during setup
+        process.exit(1);
     }
 
-    // Ensure upload directory exists for tests but is empty
+    server = http.createServer(app);
+    await new Promise((resolve) => server.listen(0, resolve));
+    console.log('[setupTests.js] Test server started');
+
+    // Add delay to ensure server is fully initialized
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     try {
         await fs.mkdir(UPLOAD_DIR_FOR_TESTS, { recursive: true });
         const files = await fs.readdir(UPLOAD_DIR_FOR_TESTS);
         for (const file of files) {
-            if (file !== '.gitkeep') { // Don't delete .gitkeep if you use one
+            if (file !== '.gitkeep') {
                 await fs.unlink(path.join(UPLOAD_DIR_FOR_TESTS, file));
             }
         }
     } catch (err) {
-        console.error("[setupTests.js] Error preparing uploads directory for tests:", err);
+        console.error('[setupTests.js] Error preparing uploads directory:', err);
     }
 });
 
 afterAll(async () => {
     if (mongoose.connection && mongoose.connection.readyState === 1) {
-        await mongoose.connection.dropDatabase(); // Drop the test database
+        await mongoose.connection.dropDatabase();
         await mongoose.disconnect();
     }
     if (mongod) {
         await mongod.stop();
     }
-    // Clean up any remaining test image files after all tests
+    if (server) {
+        await new Promise((resolve) => server.close(resolve));
+        console.log('[setupTests.js] Test server stopped');
+    }
     try {
         const files = await fs.readdir(UPLOAD_DIR_FOR_TESTS);
         for (const file of files) {
@@ -56,23 +82,17 @@ afterAll(async () => {
                 await fs.unlink(path.join(UPLOAD_DIR_FOR_TESTS, file));
             }
         }
-        // Optional: remove the directory itself if it was created by tests and should not persist
-        // if (files.length === 0 || (files.length === 1 && files[0] === '.gitkeep')) {
-        //    await fs.rmdir(UPLOAD_DIR_FOR_TESTS, { recursive: true }); // Careful with recursive remove
-        // }
     } catch (err) {
-        // console.warn("[setupTests.js] Warning: Could not fully clean up test image files/directory:", err.message);
+        console.warn('[setupTests.js] Could not clean up test image files:', err.message);
     }
 });
 
-// General beforeEach to clean common test entities if not handled by specific test suites
 beforeEach(async () => {
     if (mongoose.connection && mongoose.connection.readyState === 1) {
         try {
-            // This regex is good for general cleanup of test users if suites don't do it
             await User.deleteMany({ email: { $regex: /@test\.example\.com$/ } });
         } catch (error) {
-            console.error('[setupTests.js] Error during global beforeEach cleanup:', error);
+            console.error('[setupTests.js] Error during beforeEach cleanup:', error);
         }
     }
 });
