@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
@@ -38,39 +39,41 @@ const upload = multer({
     }
 });
 
-router.post('/upload', upload.single('image'), (req, res) => {
+router.post('/upload', authMiddleware, upload.single('image'), (req, res) => {
+    console.log('[IMAGE UPLOAD] Request received');
+    console.log('[IMAGE UPLOAD] Authenticated user:', req.user?.email);
+    console.log('[IMAGE UPLOAD] File info:', req.file ? {
+        filename: req.file.filename,
+        size: req.file.size,
+        mimetype: req.file.mimetype
+    } : 'No file received');
+
     if (!req.file) {
+        console.log('[IMAGE UPLOAD] Error: No file uploaded');
         return res.status(400).json({ message: 'No image file uploaded or file type not allowed.' });
     }
 
-    // --- Corrected URL Construction ---
     const filename = req.file.filename;
-    let baseUrl = process.env.RENDER_EXTERNAL_URL; // This is specific to Render.com hosting
+    let baseUrl = process.env.RENDER_EXTERNAL_URL;
 
     if (!baseUrl) {
-        // Fallback for local development or other hosting
-        // Ensure req.protocol and req.get('host') are reliable in your environment
-        // For local, you might hardcode or use another env variable:
         baseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
         if (process.env.NODE_ENV === 'development' && !process.env.BACKEND_URL) {
-            // Common local setup
             const port = process.env.PORT || 5001;
             baseUrl = `http://localhost:${port}`;
         }
     }
 
-    // Ensure no trailing slash on baseUrl and leading slash on relative path
     if (baseUrl.endsWith('/')) {
         baseUrl = baseUrl.slice(0, -1);
     }
     const relativeImagePath = `/uploads/images/${filename}`;
     const absoluteImageUrl = `${baseUrl}${relativeImagePath}`;
-    // --- End Corrected URL Construction ---
 
-    console.log(`Constructed image URL: ${absoluteImageUrl}`); // For debugging
-
-    res.status(201).json({ url: absoluteImageUrl }); // Send back the FULL ABSOLUTE URL
+    console.log(`[IMAGE UPLOAD] Success: Image URL: ${absoluteImageUrl}`);
+    res.status(201).json({ url: absoluteImageUrl });
 }, (error, req, res, next) => {
+    console.error('[IMAGE UPLOAD] Error:', error);
     if (error instanceof multer.MulterError) {
         if (error.code === 'LIMIT_FILE_SIZE') {
             return res.status(413).json({ message: `Image file is too large. Max ${upload.limits.fileSize / (1024 * 1024)}MB allowed.` });

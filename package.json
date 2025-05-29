@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "2.12.0",
-  "commitMessage": "Implement comprehensive input validation using express-validator (Equals tag 2.7.0)",
+  "version": "2.12.1",
+  "commitMessage": "Several bugs fixes",
   "description": "",
   "main": "index.js",
   "scripts": {
