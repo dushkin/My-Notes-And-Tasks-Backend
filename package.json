@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.0.0",
-  "commitMessage": "Extended security + many bugs fixes",
+  "version": "3.0.1",
+  "commitMessage": "Remove current tests",
   "description": "",
   "main": "index.js",
   "scripts": {
