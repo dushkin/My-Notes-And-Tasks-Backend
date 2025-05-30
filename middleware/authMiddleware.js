@@ -1,44 +1,38 @@
-// middleware/authMiddleware.js
-const { verifyToken } = require('../utils/jwt');
-const User = require('../models/User'); // Assuming your user model is here
+const { verifyAccessToken } = require('../utils/jwt');
 
 const authMiddleware = async (req, res, next) => {
-    let token;
+    console.log('authMiddleware: Processing request for', req.path);
+    try {
+        const authHeader = req.header('Authorization');
+        if (!authHeader) {
+            console.log('authMiddleware: No Authorization header');
+            return res.status(401).json({ error: 'No token provided' });
+        }
 
-    // Check for token in Authorization header (Bearer <token>)
-    if (
-        req.headers.authorization &&
-        req.headers.authorization.startsWith('Bearer')
-    ) {
-        try {
-            // Extract token from header
-            token = req.headers.authorization.split(' ')[1];
+        const token = authHeader.replace('Bearer ', '');
+        console.log('authMiddleware: Token extracted:', token);
 
-            // Verify token
-            const decoded = verifyToken(token); // verifyToken should return payload or null
+        const decoded = verifyAccessToken(token);
+        console.log('authMiddleware: Decoded JWT:', decoded);
 
-            if (!decoded || !decoded.user || !decoded.user.id) {
-                return res.status(401).json({ error: 'Not authorized, token failed' });
-            }
-
-            // Find user by ID from token payload and attach to request (excluding password)
-            // Note: Selecting '-password' explicitly excludes the password field
-            req.user = await User.findById(decoded.user.id).select('-password');
-
-            if (!req.user) {
-                // Handle case where user might have been deleted after token was issued
-                return res.status(401).json({ error: 'Not authorized, user not found' });
-            }
-
-            next(); // Proceed to the next middleware or route handler
-        } catch (error) {
-            console.error('Authentication Error:', error.message);
+        if (!decoded || !decoded.user || !decoded.user.id) {
+            console.log('authMiddleware: Invalid decoded payload');
             return res.status(401).json({ error: 'Not authorized, token failed' });
         }
-    }
 
-    if (!token) {
-        return res.status(401).json({ error: 'Not authorized, no token' });
+        const User = require('../models/User');
+        const user = await User.findById(decoded.user.id);
+        if (!user) {
+            console.log('authMiddleware: User not found');
+            return res.status(401).json({ error: 'Not authorized, user not found' });
+        }
+
+        req.user = user;
+        console.log('authMiddleware: User attached:', user.email);
+        next();
+    } catch (err) {
+        console.error('authMiddleware: Error:', err.message);
+        res.status(401).json({ error: 'Not authorized, token failed' });
     }
 };
 

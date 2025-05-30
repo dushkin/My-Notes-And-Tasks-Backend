@@ -1,4 +1,3 @@
-// routes/itemsRoutes.js
 const express = require('express');
 const { body, param, validationResult, check } = require('express-validator');
 const {
@@ -9,6 +8,7 @@ const {
     replaceUserTree,
 } = require('../controllers/itemsController');
 const authMiddleware = require('../middleware/authMiddleware');
+const { createItemLimiter } = require('../middleware/rateLimiterMiddleware');
 
 const router = express.Router();
 
@@ -22,7 +22,7 @@ const validate = (req, res, next) => {
         // The rest of the function remains the same for joining messages
         let flatErrorMessages = [];
         errorMessages.forEach(msg => {
-            if (Array.isArray(msg)) { // This case is less likely now
+            if (Array.isArray(msg)) {
                 flatErrorMessages = flatErrorMessages.concat(msg);
             } else {
                 flatErrorMessages.push(msg);
@@ -235,7 +235,7 @@ router.put(
  *       '500':
  *         $ref: '#/components/responses/ServerError'
  */
-router.post('/', ...itemValidations, validate, createItem);
+router.post('/', createItemLimiter, ...itemValidations, validate, createItem);
 
 /**
  * @openapi
@@ -278,7 +278,7 @@ router.post('/', ...itemValidations, validate, createItem);
  *       '500':
  *         $ref: '#/components/responses/ServerError'
  */
-router.post('/:parentId', ...parentIdParamValidation, ...itemValidations, validate, createItem);
+router.post('/:parentId', createItemLimiter, ...parentIdParamValidation, ...itemValidations, validate, createItem);
 
 /**
  * @openapi
@@ -292,8 +292,9 @@ router.post('/:parentId', ...parentIdParamValidation, ...itemValidations, valida
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: itemId
+ *         name: itemId'
  *         schema:
+ *         name: itemId
  *           type: string
  *         required: true
  *         description: The ID of the item to update.
@@ -310,10 +311,12 @@ router.post('/:parentId', ...parentIdParamValidation, ...itemValidations, valida
  *         description: Item updated successfully. Returns the updated item.
  *         content:
  *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Item'
+ * content:           application/json:
+ *               schema:
+ *               schema:
+                $ref: '#/components/schemas/Item'
  *       '400':
- *         $ref: '#/components/responses/BadRequestError'
+ *         $ref: '#/components/BadRequestError'
  *       '401':
  *         $ref: '#/components/responses/UnauthorizedError'
  *       '404':
@@ -359,7 +362,7 @@ router.patch('/:itemId', ...itemIdParamValidation, ...updateItemValidations, val
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       '401':
- *         $ref: '#/components/responses/UnauthorizedError'
+ *         $ref: '#/components/responses/Error'
  *       '404':
  *         description: User not found.
  *         content:
@@ -367,8 +370,23 @@ router.patch('/:itemId', ...itemIdParamValidation, ...updateItemValidations, val
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       '500':
- *         $ref: '#/components/responses/ServerError'
+           $ref: '#/components/responses/ServerError'
  */
 router.delete('/:itemId', ...itemIdParamValidation, validate, deleteItem);
+
+router.get('/:itemId', authMiddleware, async (req, res) => {
+    console.log('GET /:itemId: itemId=', req.params.itemId);
+    try {
+        const item = req.user.notesTree.find(item => item.id === req.params.itemId);
+        if (!item) {
+            console.log('GET /:itemId: Item not found');
+            return res.status(404).json({ error: 'Item not found' });
+        }
+        res.json(item);
+    } catch (err) {
+        console.error('GET /:itemId: Error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
 
 module.exports = router;
