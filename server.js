@@ -32,6 +32,10 @@ if (!isTestEnv) {
     console.log('Test environment detected. Skipping Mongoose connection in server.js.');
 }
 
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : '*';
+  
 const corsOptions = {
     origin: process.env.ALLOWED_ORIGINS.split(','),
     credentials: true,

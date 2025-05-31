@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.1.0",
-  "commitMessage": "Refactored server.js; Added a new set of tests; increased import quota to 50Mb",
+  "version": "3.1.1",
+  "commitMessage": "Added const allowedOrigins to server.js",
   "description": "",
   "main": "index.js",
   "scripts": {
