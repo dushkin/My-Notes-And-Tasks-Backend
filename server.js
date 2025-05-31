@@ -12,18 +12,28 @@ console.log('Environment Variables:', {
     DATABASE_URL: process.env.DATABASE_URL ? 'Set' : 'Not set'
 });
 
-// Connect to MongoDB
-mongoose.connect(process.env.DATABASE_URL, {
-    serverSelectionTimeoutMS: 30000
-}).then(() => {
-    console.log('Connected to MongoDB');
-}).catch((err) => {
-    console.error('MongoDB connection error:', err.message);
-    process.exit(1);
-});
+const isTestEnv = process.env.NODE_ENV === 'test';
+
+if (!isTestEnv) {
+    // Only connect to your production database when not testing  
+    mongoose
+        .connect(process.env.DATABASE_URL, {
+            serverSelectionTimeoutMS: 30000
+            // removed deprecated options like useNewUrlParser and useUnifiedTopology
+        })
+        .then(() => {
+            console.log('Connected to MongoDB');
+        })
+        .catch((err) => {
+            console.error('MongoDB connection error:', err.message);
+            process.exit(1);
+        });
+} else {
+    console.log('Test environment detected. Skipping Mongoose connection in server.js.');
+}
 
 const corsOptions = {
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'],
+    origin: process.env.ALLOWED_ORIGINS.split(','),
     credentials: true,
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -32,9 +42,10 @@ const corsOptions = {
 app.use(cors(corsOptions));
 console.log('CORS middleware initialized with origins:', corsOptions.origin);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Register routes
 try {
     console.log('Loading authRoutes...');
     const authRoutes = require('./routes/authRoutes');
@@ -67,31 +78,13 @@ try {
 
 app.get('/', (req, res) => res.send('API Running'));
 
-// Log registered routes after server starts
-const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    // Alternative route logging for Express 4.x/5.x
-    try {
-        const stack = app._router ? app._router.stack : app.stack;
-        if (stack) {
-            stack.forEach((layer) => {
-                if (layer.route && layer.route.path) {
-                    console.log('Registered route:', layer.route.path, layer.route.methods);
-                } else if (layer.name === 'router' && layer.handle.stack) {
-                    const prefix = layer.regexp.toString().replace(/.*\/(.*?)\/\.\*/, '$1') || '';
-                    layer.handle.stack.forEach((subLayer) => {
-                        if (subLayer.route && subLayer.route.path) {
-                            const fullPath = `/api${prefix}${subLayer.route.path}`;
-                            console.log('Registered sub-route:', fullPath, subLayer.route.methods);
-                        }
-                    });
-                }
-            });
-        } else {
-            console.error('Router stack not available. Ensure Express is properly initialized.');
-        }
-    } catch (err) {
-        console.error('Error logging routes:', err.message);
-    }
-});
+// Only start listening if the module is executed directly.
+if (require.main === module) {
+    const PORT = process.env.PORT || 5001;
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+        // Optional: log all registered routes.
+    });
+}
+
+module.exports = app;

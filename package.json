@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.0.1",
-  "commitMessage": "Remove current tests",
+  "version": "3.1.0",
+  "commitMessage": "Refactored server.js; Added a new set of tests; increased import quota to 50Mb",
   "description": "",
   "main": "index.js",
   "scripts": {
