@@ -35,9 +35,9 @@ if (!isTestEnv) {
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : '*';
-  
+
 const corsOptions = {
-    origin: process.env.ALLOWED_ORIGINS.split(','),
+    origin: allowedOrigins,
     credentials: true,
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
