@@ -326,28 +326,30 @@ router.delete('/account', async (req, res) => {
 if (process.env.NODE_ENV !== 'production') {
   router.delete('/test-cleanup', async (req, res) => {
     try {
-      const User = require('../models/User');
+      const User = require('../models/User'); // Adjust path to your User model
 
-      // Delete all users with test email patterns
+      // Delete all users with @e2e.com domain
       const result = await User.deleteMany({
-        email: {
-          $regex: /^(test|admin|user).*@example\.com$|^.*-test-.*@example\.com$/,
-          $options: 'i'
-        }
+        email: { $regex: /@e2e\.com$/, $options: 'i' }
       });
 
-      console.log(`Test cleanup: deleted ${result.deletedCount} test users`);
+      console.log(`🧹 Test cleanup: deleted ${result.deletedCount} users from @e2e.com domain`);
       res.json({
         message: 'Test cleanup completed',
-        deletedUsers: result.deletedCount
+        deletedUsers: result.deletedCount,
+        domain: 'e2e.com'
       });
 
     } catch (error) {
       console.error('Test cleanup error:', error);
-      res.status(500).json({ error: 'Cleanup failed', details: error.message });
+      res.status(500).json({
+        error: 'Cleanup failed',
+        details: error.message
+      });
     }
   });
 }
+
 
 router.delete('/account', async (req, res) => {
   try {
