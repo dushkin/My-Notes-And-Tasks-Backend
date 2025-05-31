@@ -1,4 +1,12 @@
 require('dotenv').config();
+
+// Add these debug lines
+console.log('=== ENVIRONMENT VARIABLES DEBUG ===');
+console.log('MONGODB_URI:', process.env.MONGODB_URI ? 'LOADED' : 'NOT LOADED');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('PORT:', process.env.PORT);
+console.log('=====================================');
+
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -9,15 +17,21 @@ console.log('Environment Variables:', {
     FRONTEND_URL: process.env.FRONTEND_URL,
     RENDER_EXTERNAL_URL: process.env.RENDER_EXTERNAL_URL,
     BACKEND_URL: process.env.BACKEND_URL,
-    DATABASE_URL: process.env.DATABASE_URL ? 'Set' : 'Not set'
+    MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set'  // Changed from DATABASE_URL
 });
 
 const isTestEnv = process.env.NODE_ENV === 'test';
 
 if (!isTestEnv) {
     // Only connect to your production database when not testing  
+    
+    // Add debug logging before connection
+    console.log('=== MONGOOSE CONNECTION DEBUG ===');
+    console.log('Connecting to:', process.env.MONGODB_URI);
+    console.log('===================================');
+    
     mongoose
-        .connect(process.env.DATABASE_URL, {
+        .connect(process.env.MONGODB_URI, {  // Changed from DATABASE_URL to MONGODB_URI
             serverSelectionTimeoutMS: 30000
             // removed deprecated options like useNewUrlParser and useUnifiedTopology
         })

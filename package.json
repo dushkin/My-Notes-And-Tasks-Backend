@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.1.2",
-  "commitMessage": "Extended api tests",
+  "version": "3.2.0",
+  "commitMessage": "Some fixes and adstments",
   "description": "",
   "main": "index.js",
   "scripts": {

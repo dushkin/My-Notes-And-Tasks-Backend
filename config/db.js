@@ -2,8 +2,11 @@
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
-  const mongoURI = process.env.DATABASE_URL;
-  // console.log(`[config/db.js] Attempting to connect to MongoDB URI: ${mongoURI}`);
+  const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/MyNotesAppDB_Prod';
+
+  console.log('=== DB CONNECTION DEBUG ===');
+  console.log('mongoURI:', mongoURI);
+  console.log('============================');
 
   if (!mongoURI) {
     const errorMessage = 'FATAL ERROR: DATABASE_URL is not defined in .env file or process.env.';
@@ -14,7 +17,7 @@ const connectDB = async () => {
       process.exit(1);
     }
   }
-
+4
   // For tests, ensure we only try to connect if not already connected or connecting
   // setupTests.js will be the primary caller for the test DB.
   if (mongoose.connection.readyState === 1 && mongoose.connections[0].client.s.url === mongoURI) {
