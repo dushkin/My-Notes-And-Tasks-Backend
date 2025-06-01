@@ -11,8 +11,8 @@ const swaggerDefinition = {
     // Optional contact information
     // contact: {
     //   name: 'API Support',
-    //   url: 'http://www.example.com/support',
-    //   email: 'support@example.com',
+    //   url: 'http://www.e2e.com/support',
+    //   email: 'support@e2e.com',
     // },
     // Optional license information
     // license: {
@@ -44,7 +44,7 @@ const swaggerDefinition = {
             type: 'string',
             format: 'email',
             description: "User's email address.",
-            example: 'user@example.com',
+            example: 'user@e2e.com',
           },
           password: {
             type: 'string',
@@ -67,7 +67,7 @@ const swaggerDefinition = {
             type: 'string',
             format: 'email',
             description: "User's email address.",
-            example: 'user@example.com',
+            example: 'user@e2e.com',
           },
           notesTree: {
             type: 'array', // Representing the root of the user's tree

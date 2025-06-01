@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.2.1",
-  "commitMessage": "Now using only @e2e.com domains for test accounts",
+  "version": "3.2.2",
+  "commitMessage": "Fixed and support context menu e2e tests",
   "description": "",
   "main": "index.js",
   "scripts": {

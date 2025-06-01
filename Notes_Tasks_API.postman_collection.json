@@ -24,7 +24,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"email\": \"testcrud@example.com\",\n    \"password\": \"password123\"\n}",
+							"raw": "{\n    \"email\": \"testcrud@e2e.com\",\n    \"password\": \"password123\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -83,7 +83,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"email\": \"testcrud@example.com\",\n    \"password\": \"password123\"\n}",
+							"raw": "{\n    \"email\": \"testcrud@e2e.com\",\n    \"password\": \"password123\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"

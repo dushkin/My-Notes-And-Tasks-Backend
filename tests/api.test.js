@@ -19,7 +19,7 @@ const {
 
 let authToken = ''; // global token for some tests
 let refreshToken = '';
-const testUserEmail = 'testuser@example.com';
+const testUserEmail = 'testuser@e2e.com';
 const testUserPassword = 'password123';
 
 describe('Authentication Endpoints', () => {
@@ -46,11 +46,11 @@ describe('Authentication Endpoints', () => {
     // first registration
     await request(app)
       .post('/api/auth/register')
-      .send({ email: 'dup@example.com', password: testUserPassword });
+      .send({ email: 'dup@e2e.com', password: testUserPassword });
     // duplicate registration should fail
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ email: 'dup@example.com', password: testUserPassword });
+      .send({ email: 'dup@e2e.com', password: testUserPassword });
     expect(res.statusCode).toEqual(400);
     expect(res.body).toHaveProperty('error');
   });
@@ -58,11 +58,11 @@ describe('Authentication Endpoints', () => {
   it('should fail login with incorrect password', async () => {
     await request(app)
       .post('/api/auth/register')
-      .send({ email: 'loginuser@example.com', password: testUserPassword });
+      .send({ email: 'loginuser@e2e.com', password: testUserPassword });
     // Try logging in with an incorrect password
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ email: 'loginuser@example.com', password: 'wrongPassword' });
+      .send({ email: 'loginuser@e2e.com', password: 'wrongPassword' });
     expect(res.statusCode).toEqual(401);
     expect(res.body.error).toMatch(/Invalid credentials/);
   });
@@ -71,11 +71,11 @@ describe('Authentication Endpoints', () => {
     // First register a new user for login if not yet done
     await request(app)
       .post('/api/auth/register')
-      .send({ email: 'loginsuccess@example.com', password: testUserPassword });
+      .send({ email: 'loginsuccess@e2e.com', password: testUserPassword });
 
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ email: 'loginsuccess@example.com', password: testUserPassword });
+      .send({ email: 'loginsuccess@e2e.com', password: testUserPassword });
     expect(res.statusCode).toEqual(200);
     expect(res.body).toHaveProperty('accessToken');
     expect(res.body).toHaveProperty('refreshToken');
@@ -132,7 +132,7 @@ describe('Items Endpoints', () => {
     // Register a new user for item-related operations
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ email: 'itemsuser@example.com', password: testUserPassword });
+      .send({ email: 'itemsuser@e2e.com', password: testUserPassword });
     userToken = res.body.accessToken;
   });
 
@@ -299,7 +299,7 @@ describe('Image Upload Endpoint', () => {
   beforeAll(async () => {
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ email: 'imageuser@example.com', password: testUserPassword });
+      .send({ email: 'imageuser@e2e.com', password: testUserPassword });
     userToken = res.body.accessToken;
   });
 
