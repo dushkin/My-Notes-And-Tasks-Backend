@@ -211,16 +211,22 @@ if (require.main === module) {
 }
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
     console.log('👋 SIGTERM RECEIVED. Shutting down gracefully');
     if (server) {
-        server.close(() => {
-            console.log('💥 Process terminated!');
-            mongoose.connection.close(false, () => {
+        server.close(async () => {
+            console.log('💥 HTTP server closed.');
+            try {
+                await mongoose.connection.close();
                 console.log('MongoDB connection closed.');
+            } catch (err) {
+                console.error('Error closing MongoDB connection:', err);
+            } finally {
                 process.exit(0);
-            });
+            }
         });
+    } else {
+        process.exit(0);
     }
 });
 
