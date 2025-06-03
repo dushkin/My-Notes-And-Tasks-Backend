@@ -4,6 +4,7 @@ const { body, validationResult } = require('express-validator');
 const { register, login, refreshToken, logout, logoutAll, verifyToken } = require('../controllers/authController');
 const authMiddleware = require('../middleware/authMiddleware');
 const { authLimiter } = require('../middleware/rateLimiterMiddleware');
+const { catchAsync, AppError } = require('../middleware/errorHandlerMiddleware');
 const router = express.Router();
 
 // Middleware to handle validation errors
@@ -19,7 +20,7 @@ const validate = (req, res, next) => {
         flatErrorMessages.push(msg);
       }
     });
-    return res.status(400).json({ error: flatErrorMessages.join(', ') || 'Validation error' });
+    return next(new AppError(flatErrorMessages.join(', ') || 'Validation error', 400));
   }
   next();
 };
@@ -256,137 +257,44 @@ router.post('/logout-all', authMiddleware, logoutAll);
 
 router.get('/verify-token', authMiddleware, verifyToken);
 
-router.delete('/account', async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) {
-      return res.status(401).json({ error: 'No token provided' });
+// Updated delete account endpoint with error handling
+router.delete('/account', authMiddleware, catchAsync(async (req, res, next) => {
+    const User = require('../models/User');
+    const RefreshToken = require('../models/refreshToken');
+    
+    const userId = req.user.id;
+    
+    // Delete all refresh tokens for this user
+    await RefreshToken.deleteMany({ userId });
+    
+    // Delete the user
+    const result = await User.findByIdAndDelete(userId);
+    
+    if (!result) {
+        return next(new AppError('User not found', 404));
     }
-
-    // Verify token
-    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
-      if (err) {
-        return res.status(401).json({ error: 'Invalid or expired token' });
-      }
-
-      try {
-        // Find and delete the user
-        // Adjust this based on your database setup
-
-        // For in-memory storage (if using the example auth routes):
-        const userEmail = decoded.email;
-        if (users.has(userEmail)) {
-          users.delete(userEmail);
-          console.log(`User deleted: ${userEmail}`);
-
-          // Also clean up any refresh tokens for this user
-          const userRefreshTokens = Array.from(refreshTokens).filter(token => {
-            try {
-              const tokenData = jwt.verify(token, REFRESH_SECRET);
-              return tokenData.email === userEmail;
-            } catch {
-              return false;
-            }
-          });
-
-          userRefreshTokens.forEach(token => refreshTokens.delete(token));
-
-          res.json({ message: 'Account deleted successfully' });
-        } else {
-          res.status(404).json({ error: 'User not found' });
-        }
-
-        // For MongoDB with Mongoose:
-        /*
-        const user = await User.findOne({ email: decoded.email });
-        if (!user) {
-          return res.status(404).json({ error: 'User not found' });
-        }
-        
-        await User.findByIdAndDelete(user._id);
-        console.log(`User deleted: ${decoded.email}`);
-        res.json({ message: 'Account deleted successfully' });
-        */
-
-      } catch (error) {
-        console.error('Delete user error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
-
-  } catch (error) {
-    console.error('Delete account error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    
+    console.log(`User deleted: ${req.user.email}`);
+    res.json({ message: 'Account deleted successfully' });
+}));
 
 // Add a test-only cleanup endpoint (only in development/test)
 if (process.env.NODE_ENV !== 'production') {
-  router.delete('/test-cleanup', async (req, res) => {
-    try {
-      const User = require('../models/User'); // Adjust path to your User model
+  router.delete('/test-cleanup', catchAsync(async (req, res, next) => {
+    const User = require('../models/User');
 
-      // Delete all users with @e2e.com domain
-      const result = await User.deleteMany({
-        email: { $regex: /@e2e\.com$/, $options: 'i' }
-      });
-
-      console.log(`🧹 Test cleanup: deleted ${result.deletedCount} users from @e2e.com domain`);
-      res.json({
-        message: 'Test cleanup completed',
-        deletedUsers: result.deletedCount,
-        domain: 'e2e.com'
-      });
-
-    } catch (error) {
-      console.error('Test cleanup error:', error);
-      res.status(500).json({
-        error: 'Cleanup failed',
-        details: error.message
-      });
-    }
-  });
-}
-
-
-router.delete('/account', async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) {
-      return res.status(401).json({ error: 'No token provided' });
-    }
-
-    jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
-      if (err) {
-        return res.status(401).json({ error: 'Invalid or expired token' });
-      }
-
-      try {
-        const User = require('../models/User'); // Adjust path
-
-        const result = await User.findByIdAndDelete(decoded.userId);
-
-        if (!result) {
-          return res.status(404).json({ error: 'User not found' });
-        }
-
-        console.log(`User deleted: ${decoded.email}`);
-        res.json({ message: 'Account deleted successfully' });
-
-      } catch (error) {
-        console.error('Delete user error:', error);
-        res.status(500).json({ error: 'Internal server error', details: error.message });
-      }
+    // Delete all users with @e2e.com domain
+    const result = await User.deleteMany({
+      email: { $regex: /@e2e\.com$/, $options: 'i' }
     });
 
-  } catch (error) {
-    console.error('Delete account error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    console.log(`🧹 Test cleanup: deleted ${result.deletedCount} users from @e2e.com domain`);
+    res.json({
+      message: 'Test cleanup completed',
+      deletedUsers: result.deletedCount,
+      domain: 'e2e.com'
+    });
+  }));
+}
 
 module.exports = router;

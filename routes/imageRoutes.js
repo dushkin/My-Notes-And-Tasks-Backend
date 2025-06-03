@@ -1,3 +1,4 @@
+// routes/imageRoutes.js
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -6,6 +7,7 @@ const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
 const authMiddleware = require('../middleware/authMiddleware');
 const { uploadLimiter } = require('../middleware/rateLimiterMiddleware');
+const { catchAsync, AppError } = require('../middleware/errorHandlerMiddleware');
 
 const router = express.Router();
 
@@ -37,12 +39,12 @@ const storage = multer.diskStorage({
 
 const fileFilter = (req, file, cb) => {
     if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-        return cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.'), false);
+        return cb(new AppError('Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.', 400), false);
     }
 
     const ext = path.extname(file.originalname).toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
-        return cb(new Error('Invalid file extension. Only .jpg, .jpeg, .png, .gif, and .webp files are allowed.'), false);
+        return cb(new AppError('Invalid file extension. Only .jpg, .jpeg, .png, .gif, and .webp files are allowed.', 400), false);
     }
 
     cb(null, true);
@@ -60,13 +62,13 @@ const scanFile = async (filePath) => {
         const ext = path.extname(filePath).toLowerCase();
 
         if (ext === '.jpg' || ext === '.jpeg') {
-            if (!jpegHeader) throw new Error('Invalid JPEG file');
+            if (!jpegHeader) throw new AppError('Invalid JPEG file', 400);
         } else if (ext === '.png') {
-            if (!pngHeader) throw new Error('Invalid PNG file');
+            if (!pngHeader) throw new AppError('Invalid PNG file', 400);
         } else if (ext === '.gif') {
-            if (!gifHeader) throw new Error('Invalid GIF file');
+            if (!gifHeader) throw new AppError('Invalid GIF file', 400);
         } else if (ext === '.webp') {
-            if (!webpHeader) throw new Error('Invalid WebP file');
+            if (!webpHeader) throw new AppError('Invalid WebP file', 400);
         }
 
         const suspicious = [
@@ -83,13 +85,16 @@ const scanFile = async (filePath) => {
         const fileContent = buffer.toString('ascii').toLowerCase();
         for (const pattern of suspicious) {
             if (fileContent.includes(pattern)) {
-                throw new Error('Suspicious content detected');
+                throw new AppError('Suspicious content detected in file', 400);
             }
         }
 
         return true;
     } catch (error) {
-        throw new Error(`File scan failed: ${error.message}`);
+        if (error instanceof AppError) {
+            throw error;
+        }
+        throw new AppError(`File scan failed: ${error.message}`, 400);
     }
 };
 
@@ -110,7 +115,7 @@ const processImage = async (filePath, originalName) => {
         const metadata = await image.metadata();
 
         if (metadata.width > 10000 || metadata.height > 10000) {
-            throw new Error('Image dimensions too large');
+            throw new AppError('Image dimensions too large', 400);
         }
 
         const processedBuffer = await image
@@ -130,7 +135,10 @@ const processImage = async (filePath, originalName) => {
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
         }
-        throw error;
+        if (error instanceof AppError) {
+            throw error;
+        }
+        throw new AppError(`Image processing failed: ${error.message}`, 400);
     }
 };
 
@@ -205,7 +213,7 @@ router.post('/upload',
     authMiddleware,
     uploadLimiter,
     upload.single('image'),
-    async (req, res) => {
+    catchAsync(async (req, res, next) => {
         console.log('[IMAGE UPLOAD] Request received');
         console.log('[IMAGE UPLOAD] Authenticated user:', req.user?.email);
         console.log('[IMAGE UPLOAD] File info:', req.file ? {
@@ -216,46 +224,40 @@ router.post('/upload',
 
         if (!req.file) {
             console.log('[IMAGE UPLOAD] Error: No file uploaded');
-            return res.status(400).json({ message: 'No image file uploaded or file type not allowed.' });
+            return next(new AppError('No image file uploaded or file type not allowed', 400));
         }
 
-        try {
-            const imageInfo = await processImage(req.file.path, req.file.originalname);
+        const imageInfo = await processImage(req.file.path, req.file.originalname);
 
-            const filename = req.file.filename;
-            let baseUrl = process.env.RENDER_EXTERNAL_URL;
+        const filename = req.file.filename;
+        let baseUrl = process.env.RENDER_EXTERNAL_URL;
 
-            if (!baseUrl) {
-                baseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
-                if (process.env.NODE_ENV === 'development' && !process.env.BACKEND_URL) {
-                    const port = process.env.PORT || 5001;
-                    baseUrl = `http://localhost:${port}`;
-                }
+        if (!baseUrl) {
+            baseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+            if (process.env.NODE_ENV === 'development' && !process.env.BACKEND_URL) {
+                const port = process.env.PORT || 5001;
+                baseUrl = `http://localhost:${port}`;
             }
-
-            if (baseUrl.endsWith('/')) {
-                baseUrl = baseUrl.slice(0, -1);
-            }
-            const relativeImagePath = `/uploads/images/${filename}`;
-            const absoluteImageUrl = `${baseUrl}${relativeImagePath}`;
-
-            console.log(`[IMAGE UPLOAD] Success: Image URL: ${absoluteImageUrl}`);
-            res.status(201).json({
-                url: absoluteImageUrl,
-                metadata: {
-                    width: imageInfo.width,
-                    height: imageInfo.height,
-                    format: imageInfo.format,
-                    size: imageInfo.size
-                }
-            });
-        } catch (error) {
-            console.error('[IMAGE UPLOAD] Processing error:', error);
-            return res.status(400).json({
-                message: `Image processing failed: ${error.message}`
-            });
         }
-    },
+
+        if (baseUrl.endsWith('/')) {
+            baseUrl = baseUrl.slice(0, -1);
+        }
+        const relativeImagePath = `/uploads/images/${filename}`;
+        const absoluteImageUrl = `${baseUrl}${relativeImagePath}`;
+
+        console.log(`[IMAGE UPLOAD] Success: Image URL: ${absoluteImageUrl}`);
+        res.status(201).json({
+            url: absoluteImageUrl,
+            metadata: {
+                width: imageInfo.width,
+                height: imageInfo.height,
+                format: imageInfo.format,
+                size: imageInfo.size
+            }
+        });
+    }),
+    // Multer error handler
     (error, req, res, next) => {
         console.error('[IMAGE UPLOAD] Error:', error);
 
@@ -265,22 +267,16 @@ router.post('/upload',
 
         if (error instanceof multer.MulterError) {
             if (error.code === 'LIMIT_FILE_SIZE') {
-                return res.status(413).json({
-                    message: `Image file is too large. Max ${upload.limits.fileSize / (1024 * 1024)}MB allowed.`
-                });
+                return next(new AppError(`Image file is too large. Max ${upload.limits.fileSize / (1024 * 1024)}MB allowed.`, 413));
             }
             if (error.code === 'LIMIT_FILE_COUNT') {
-                return res.status(400).json({
-                    message: 'Only one file allowed per upload.'
-                });
+                return next(new AppError('Only one file allowed per upload.', 400));
             }
-            return res.status(400).json({
-                message: `Upload error: ${error.message}`
-            });
+            return next(new AppError(`Upload error: ${error.message}`, 400));
+        } else if (error instanceof AppError) {
+            return next(error);
         } else if (error) {
-            return res.status(400).json({
-                message: error.message || 'Image upload failed due to an unknown error.'
-            });
+            return next(new AppError(error.message || 'Image upload failed due to an unknown error.', 400));
         }
         next();
     }

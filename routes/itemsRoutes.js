@@ -1,3 +1,4 @@
+// routes/itemsRoutes.js
 const express = require('express');
 const { body, param, validationResult, check } = require('express-validator');
 const {
@@ -9,6 +10,7 @@ const {
 } = require('../controllers/itemsController');
 const authMiddleware = require('../middleware/authMiddleware');
 const { createItemLimiter } = require('../middleware/rateLimiterMiddleware');
+const { catchAsync, AppError } = require('../middleware/errorHandlerMiddleware');
 
 const router = express.Router();
 
@@ -28,7 +30,7 @@ const validate = (req, res, next) => {
                 flatErrorMessages.push(msg);
             }
         });
-        return res.status(400).json({ error: flatErrorMessages.join(', ') || 'Validation error' });
+        return next(new AppError(flatErrorMessages.join(', ') || 'Validation error', 400));
     }
     next();
 };
@@ -47,7 +49,11 @@ const itemValidations = [
         .isIn(['folder', 'note', 'task']).withMessage('Invalid item type. Must be folder, note, or task.'),
     body('content')
         .optional()
-        .isString().withMessage('Content must be a string.'),
+        .isString().withMessage('Content must be a string.')
+        .customSanitizer(value => {
+            // Don't escape HTML - return the content as-is
+            return value;
+        }),
     body('completed')
         .optional()
         .isBoolean().withMessage('Completed status must be a boolean.'),
@@ -63,7 +69,11 @@ const updateItemValidations = [
         .isLength({ min: 1, max: 255 }).withMessage('Label must be between 1 and 255 characters.'),
     body('content')
         .optional({ checkFalsy: false })
-        .isString().withMessage('Content must be a string if provided.'),
+        .isString().withMessage('Content must be a string if provided.')
+        .customSanitizer(value => {
+            // Don't escape HTML - return the content as-is
+            return value;
+        }),
     body('completed')
         .optional()
         .isBoolean().withMessage('Completed status must be a boolean if provided.'),
@@ -95,6 +105,8 @@ const parentIdParamValidation = [
         .notEmpty().withMessage('Parent ID path parameter is required.')
         .isString().withMessage('Parent ID must be a string.'),
 ];
+
+// ... rest of your routes remain the same
 
 /**
  * @openapi
@@ -311,12 +323,10 @@ router.post('/:parentId', createItemLimiter, ...parentIdParamValidation, ...item
  *         description: Item updated successfully. Returns the updated item.
  *         content:
  *           application/json:
- * content:           application/json:
- *               schema:
- *               schema:
-                $ref: '#/components/schemas/Item'
+ *             schema:
+ *               $ref: '#/components/schemas/Item'
  *       '400':
- *         $ref: '#/components/BadRequestError'
+ *         $ref: '#/components/responses/BadRequestError'
  *       '401':
  *         $ref: '#/components/responses/UnauthorizedError'
  *       '404':
@@ -362,7 +372,7 @@ router.patch('/:itemId', ...itemIdParamValidation, ...updateItemValidations, val
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       '401':
- *         $ref: '#/components/responses/Error'
+ *         $ref: '#/components/responses/UnauthorizedError'
  *       '404':
  *         description: User not found.
  *         content:
@@ -370,23 +380,31 @@ router.patch('/:itemId', ...itemIdParamValidation, ...updateItemValidations, val
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       '500':
-           $ref: '#/components/responses/ServerError'
+ *         $ref: '#/components/responses/ServerError'
  */
 router.delete('/:itemId', ...itemIdParamValidation, validate, deleteItem);
 
-router.get('/:itemId', authMiddleware, async (req, res) => {
+// Updated GET single item endpoint with error handling
+router.get('/:itemId', authMiddleware, catchAsync(async (req, res, next) => {
     console.log('GET /:itemId: itemId=', req.params.itemId);
-    try {
-        const item = req.user.notesTree.find(item => item.id === req.params.itemId);
-        if (!item) {
-            console.log('GET /:itemId: Item not found');
-            return res.status(404).json({ error: 'Item not found' });
-        }
-        res.json(item);
-    } catch (err) {
-        console.error('GET /:itemId: Error:', err.message);
-        res.status(500).json({ error: err.message });
+
+    const User = require('../models/User');
+    const { findItemRecursive } = require('../utils/backendTreeUtils');
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+        return next(new AppError('User not found', 404));
     }
-});
+
+    const currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
+    const itemSearchResult = findItemRecursive(currentTree, req.params.itemId);
+
+    if (!itemSearchResult || !itemSearchResult.item) {
+        console.log('GET /:itemId: Item not found');
+        return next(new AppError('Item not found', 404));
+    }
+
+    res.json(itemSearchResult.item);
+}));
 
 module.exports = router;
