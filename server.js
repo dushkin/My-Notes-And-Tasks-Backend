@@ -1,3 +1,4 @@
+console.log('--- SERVER.JS VERSION 3 - GRACEFUL SHUTDOWN FIX ---'); // טביעת אצבע ייחודית
 // server.js
 require('dotenv').config();
 

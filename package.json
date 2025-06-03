@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.3.4",
-  "commitMessage": "Enhanced last fix - 2",
+  "version": "3.3.5",
+  "commitMessage": "Enhanced last fix - 3",
   "description": "",
   "main": "index.js",
   "scripts": {
