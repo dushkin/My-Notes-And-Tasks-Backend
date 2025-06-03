@@ -28,6 +28,7 @@ const xss = require('xss-clean');
 const hpp = require('hpp');
 const compression = require('compression');
 const { generalLimiter } = require('./middleware/rateLimiterMiddleware');
+
 let isGracefullyClosing = false;
 
 const app = express();
@@ -43,6 +44,11 @@ console.log('Environment Variables:', {
 const isTestEnv = process.env.NODE_ENV === 'test';
 const MONGODB_URI = process.env.MONGODB_URI;
 
+if (!isTestEnv && !MONGODB_URI) {
+    console.error('FATAL ERROR: MONGODB_URI is not defined in the environment variables.');
+    process.exit(1);
+}
+
 // Database connection with better error handling
 if (!isTestEnv) {
     console.log('=== MONGOOSE CONNECTION DEBUG ===');
@@ -51,7 +57,7 @@ if (!isTestEnv) {
 
     mongoose
         .connect(MONGODB_URI, {
-            serverSelectionTimeoutMS: 30000,
+            serverSelectionTimeoutMS: 30000
         })
         .then(() => {
             console.log('Connected to MongoDB');
@@ -67,7 +73,9 @@ if (!isTestEnv) {
     });
 
     mongoose.connection.on('disconnected', () => {
-        console.warn('MongoDB disconnected. Attempting to reconnect...');
+        if (!isGracefullyClosing) {
+            console.warn('MongoDB disconnected. Attempting to reconnect...');
+        }
     });
 
     mongoose.connection.on('reconnected', () => {
@@ -100,7 +108,6 @@ app.use(helmet({
 const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',')
     : '*';
-
 const corsOptions = {
     origin: allowedOrigins,
     credentials: true,
@@ -122,13 +129,9 @@ app.use(mongoSanitize());
 app.use((req, res, next) => {
     // Only apply XSS protection to non-content fields
     if (req.body && req.body.content && (req.path.includes('/items') || req.path.includes('/notes'))) {
-        // Store the original content
         const originalContent = req.body.content;
-
-        // Apply XSS to other fields
-        const contentBackup = req.body.content;
         delete req.body.content;
-
+        
         // Apply XSS to the rest of the body
         xss()(req, res, () => {
             // Restore the original content without XSS processing
@@ -158,7 +161,6 @@ app.use('/uploads', express.static('public/uploads'));
 // API routes with error handling
 try {
     console.log('Loading routes...');
-
     // Health check endpoint
     app.get('/api/health', (req, res) => {
         res.status(200).json({
@@ -168,17 +170,17 @@ try {
             mongoStatus: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
         });
     });
-
+    
     // Auth routes
     const authRoutes = require('./routes/authRoutes');
     app.use('/api/auth', authRoutes);
     console.log('authRoutes registered successfully');
-
+    
     // Items routes
     const itemsRoutes = require('./routes/itemsRoutes');
     app.use('/api/items', itemsRoutes);
     console.log('itemsRoutes registered successfully');
-
+    
     // Image routes
     const imageRoutes = require('./routes/imageRoutes');
     app.use('/api/images', imageRoutes);
@@ -211,8 +213,6 @@ if (require.main === module) {
     handleUnhandledRejection(server);
 }
 
-// Graceful shutdown
-// Graceful shutdown
 process.on('SIGTERM', async () => {
     isGracefullyClosing = true;
     console.log('👋 SIGTERM RECEIVED. Shutting down gracefully');
