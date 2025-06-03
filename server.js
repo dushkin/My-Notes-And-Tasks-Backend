@@ -28,6 +28,7 @@ const xss = require('xss-clean');
 const hpp = require('hpp');
 const compression = require('compression');
 const { generalLimiter } = require('./middleware/rateLimiterMiddleware');
+let isGracefullyClosing = false;
 
 const app = express();
 
@@ -123,11 +124,11 @@ app.use((req, res, next) => {
     if (req.body && req.body.content && (req.path.includes('/items') || req.path.includes('/notes'))) {
         // Store the original content
         const originalContent = req.body.content;
-        
+
         // Apply XSS to other fields
         const contentBackup = req.body.content;
         delete req.body.content;
-        
+
         // Apply XSS to the rest of the body
         xss()(req, res, () => {
             // Restore the original content without XSS processing
@@ -211,7 +212,9 @@ if (require.main === module) {
 }
 
 // Graceful shutdown
+// Graceful shutdown
 process.on('SIGTERM', async () => {
+    isGracefullyClosing = true;
     console.log('👋 SIGTERM RECEIVED. Shutting down gracefully');
     if (server) {
         server.close(async () => {

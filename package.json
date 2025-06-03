@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.3.2",
-  "commitMessage": "Trying to fix Unhandled Rejection error",
+  "version": "3.3.3",
+  "commitMessage": "Enhanced last fix",
   "description": "",
   "main": "index.js",
   "scripts": {
