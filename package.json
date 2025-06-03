@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.3.0",
-  "commitMessage": "Implemented a global errors handler",
+  "version": "3.3.1",
+  "commitMessage": "Prevent from server to run in a faulty state",
   "description": "",
   "main": "index.js",
   "scripts": {

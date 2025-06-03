@@ -39,27 +39,25 @@ console.log('Environment Variables:', {
     MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set'
 });
 
-const isTestEvn = process.env.NODE_ENV === 'test';
+const isTestEnv = process.env.NODE_ENV === 'test';
+const MONGODB_URI = process.env.MONGODB_URI;
 
 // Database connection with better error handling
-if (!isTestEvn) {
+if (!isTestEnv) {
     console.log('=== MONGOOSE CONNECTION DEBUG ===');
-    console.log('Connecting to:', process.env.MONGODB_URI);
+    console.log('Connecting to MongoDB...');
     console.log('===================================');
 
     mongoose
-        .connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 30000
+        .connect(MONGODB_URI, {
+            serverSelectionTimeoutMS: 30000,
         })
         .then(() => {
             console.log('Connected to MongoDB');
         })
         .catch((err) => {
-            console.error('MongoDB connection error:', err.message);
-            // Don't exit immediately in production, let the error handler deal with it
-            if (process.env.NODE_ENV !== 'production') {
-                process.exit(1);
-            }
+            console.error('Initial MongoDB connection error:', err.message);
+            process.exit(1);
         });
 
     // Handle MongoDB connection errors after initial connection
