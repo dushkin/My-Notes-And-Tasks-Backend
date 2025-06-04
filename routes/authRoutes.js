@@ -1,13 +1,23 @@
 // routes/authRoutes.js
-const express = require('express');
-const { body, validationResult } = require('express-validator');
-const { register, login, refreshToken, logout, logoutAll, verifyToken } = require('../controllers/authController');
-const authMiddleware = require('../middleware/authMiddleware');
-const { authLimiter } = require('../middleware/rateLimiterMiddleware');
-const { catchAsync, AppError } = require('../middleware/errorHandlerMiddleware');
+import express from 'express';
+import { body, validationResult } from 'express-validator';
+import {
+  register,
+  login,
+  refreshToken,
+  logout,
+  logoutAll,
+  verifyToken
+} from '../controllers/authController.js';
+import authMiddleware from '../middleware/authMiddleware.js';
+import { authLimiter } from '../middleware/rateLimiterMiddleware.js';
+import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
+import User from '../models/User.js';
+import RefreshToken from '../models/refreshToken.js';
+import logger from '../config/logger.js';
+
 const router = express.Router();
 
-// Middleware to handle validation errors
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -19,6 +29,11 @@ const validate = (req, res, next) => {
       } else {
         flatErrorMessages.push(msg);
       }
+    });
+    logger.warn('Validation error in authRoutes', {
+      errors: flatErrorMessages,
+      path: req.path,
+      ip: req.ip
     });
     return next(new AppError(flatErrorMessages.join(', ') || 'Validation error', 400));
   }
@@ -59,8 +74,8 @@ const validate = (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-
-router.post('/register',
+router.post(
+  '/register',
   authLimiter,
   [
     body('email')
@@ -114,8 +129,8 @@ router.post('/register',
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-
-router.post('/login',
+router.post(
+  '/login',
   authLimiter,
   [
     body('email')
@@ -149,6 +164,7 @@ router.post('/login',
  *               token:
  *                 type: string
  *                 description: The refresh token
+ *                 example: "your-refresh-token-string"
  *     responses:
  *       '200':
  *         description: Tokens refreshed successfully.
@@ -159,21 +175,36 @@ router.post('/login',
  *               properties:
  *                 accessToken:
  *                   type: string
+ *                   example: "new-access-token-string"
  *                 refreshToken:
  *                   type: string
+ *                   example: "new-refresh-token-string"
  *       '401':
  *         description: Refresh token required.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       '403':
  *         description: Invalid or expired refresh token.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       '500':
  *         description: Server error during token refresh.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
-
-router.post('/refresh-token',
+router.post(
+  '/refresh-token',
   authLimiter,
   [
     body('token')
       .notEmpty().withMessage('Refresh token is required.')
+      .isString().withMessage('Refresh token must be a string.')
   ],
   validate,
   refreshToken
@@ -186,9 +217,9 @@ router.post('/refresh-token',
  *     tags:
  *       - Auth
  *     summary: Logout user
- *     description: Revokes the provided refresh token.
+ *     description: Revokes the provided refresh token. Recommended for client-side initiated logout of current session.
  *     requestBody:
- *       required: true
+ *       required: false
  *       content:
  *         application/json:
  *           schema:
@@ -196,14 +227,26 @@ router.post('/refresh-token',
  *             properties:
  *               refreshToken:
  *                 type: string
- *                 description: The refresh token to revoke
+ *                 description: The refresh token to revoke (optional).
+ *                 example: "your-refresh-token-string"
  *     responses:
  *       '200':
  *         description: Logged out successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Logged out successfully
  *       '500':
  *         description: Server error during logout.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
-
 router.post('/logout', logout);
 
 /**
@@ -213,18 +256,28 @@ router.post('/logout', logout);
  *     tags:
  *       - Auth
  *     summary: Logout from all devices
- *     description: Revokes all refresh tokens for the authenticated user.
+ *     description: Revokes all refresh tokens for the authenticated user, effectively logging them out from all devices.
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       '200':
  *         description: Logged out from all devices successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Logged out from all devices successfully
+ *                 revokedTokens:
+ *                   type: integer
+ *                   example: 3
  *       '401':
- *         description: Unauthorized.
+ *         $ref: '#/components/responses/UnauthorizedError'
  *       '500':
- *         description: Server error during logout.
+ *         $ref: '#/components/responses/ServerError'
  */
-
 router.post('/logout-all', authMiddleware, logoutAll);
 
 /**
@@ -234,7 +287,7 @@ router.post('/logout-all', authMiddleware, logoutAll);
  *     tags:
  *       - Auth
  *     summary: Verify access token
- *     description: Verifies if the provided access token is valid.
+ *     description: Verifies if the provided access token (in Authorization header) is valid and returns user information.
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -247,49 +300,96 @@ router.post('/logout-all', authMiddleware, logoutAll);
  *               properties:
  *                 valid:
  *                   type: boolean
+ *                   example: true
  *                 user:
  *                   $ref: '#/components/schemas/UserResponse'
  *       '401':
- *         description: Unauthorized.
- *       '500':
- *         description: Server error during verification.
+ *         $ref: '#/components/responses/UnauthorizedError'
  */
-
 router.get('/verify-token', authMiddleware, verifyToken);
 
-// Updated delete account endpoint with error handling
+/**
+ * @openapi
+ * /auth/account:
+ *   delete:
+ *     tags:
+ *       - Auth
+ *     summary: Delete user account
+ *     description: Permanently deletes the authenticated user's account and all associated data.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       '200':
+ *         description: Account deleted successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Account deleted successfully
+ *       '401':
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       '404':
+ *         description: User not found (should not happen if authenticated).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '500':
+ *         $ref: '#/components/responses/ServerError'
+ */
 router.delete('/account', authMiddleware, catchAsync(async (req, res, next) => {
-    const User = require('../models/User');
-    const RefreshToken = require('../models/refreshToken');
-    
-    const userId = req.user.id;
-    
-    // Delete all refresh tokens for this user
-    await RefreshToken.deleteMany({ userId });
-    
-    // Delete the user
-    const result = await User.findByIdAndDelete(userId);
-    
-    if (!result) {
-        return next(new AppError('User not found', 404));
-    }
-    
-    console.log(`User deleted: ${req.user.email}`);
-    res.json({ message: 'Account deleted successfully' });
+  const userId = req.user.id;
+  logger.info('Attempting to delete account', { userId, email: req.user.email });
+
+  await RefreshToken.deleteMany({ userId });
+  logger.info('All refresh tokens deleted for user during account deletion', { userId });
+
+  const result = await User.findByIdAndDelete(userId);
+
+  if (!result) {
+    logger.warn('User not found during account deletion, though authenticated', { userId });
+    return next(new AppError('User not found, deletion failed unexpectedly.', 404));
+  }
+
+  logger.info(`User account deleted successfully: ${req.user.email}`, { userId });
+  res.status(200).json({ message: 'Account deleted successfully' });
 }));
 
-// Add a test-only cleanup endpoint (only in development/test)
 if (process.env.NODE_ENV !== 'production') {
+  /**
+   * @openapi
+   * /auth/test-cleanup:
+   *   delete:
+   *     tags:
+   *       - Auth
+   *     summary: (Dev/Test Only) Cleanup test users
+   *     description: Deletes all users with email addresses ending in '@e2e.com'. Intended for testing environments only.
+   *     responses:
+   *       '200':
+   *         description: Test users cleaned up.
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 message:
+   *                   type: string
+   *                 deletedUsers:
+   *                   type: integer
+   *                 domain:
+   *                   type: string
+   *       '500':
+   *         $ref: '#/components/responses/ServerError'
+   */
   router.delete('/test-cleanup', catchAsync(async (req, res, next) => {
-    const User = require('../models/User');
-
-    // Delete all users with @e2e.com domain
     const result = await User.deleteMany({
       email: { $regex: /@e2e\.com$/, $options: 'i' }
     });
-
-    console.log(`🧹 Test cleanup: deleted ${result.deletedCount} users from @e2e.com domain`);
-    res.json({
+    logger.info(`[DEV/TEST] Test cleanup: deleted ${result.deletedCount} users from @e2e.com domain`);
+    res.status(200).json({
       message: 'Test cleanup completed',
       deletedUsers: result.deletedCount,
       domain: 'e2e.com'
@@ -297,4 +397,4 @@ if (process.env.NODE_ENV !== 'production') {
   }));
 }
 
-module.exports = router;
+export default router;

@@ -1,92 +1,94 @@
-console.log('--- SERVER.JS VERSION 3 - GRACEFUL SHUTDOWN FIX ---'); // טביעת אצבע ייחודית
 // server.js
-require('dotenv').config();
+import 'dotenv/config';
 
-// Import error handlers at the top
-const {
+import {
     globalErrorHandler,
     notFoundHandler,
     handleUnhandledRejection,
     handleUncaughtException
-} = require('./middleware/errorHandlerMiddleware');
+} from './middleware/errorHandlerMiddleware.js';
 
-// Handle uncaught exceptions (must be at the very top)
-handleUncaughtException();
+handleUncaughtException(); // Set up global error handler for uncaught exceptions
 
-// Add these debug lines
-console.log('=== ENVIRONMENT VARIABLES DEBUG ===');
-console.log('MONGODB_URI:', process.env.MONGODB_URI ? 'LOADED' : 'NOT LOADED');
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('PORT:', process.env.PORT);
-console.log('=====================================');
+import express from 'express';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import helmet from 'helmet';
+import mongoSanitize from 'express-mongo-sanitize';
 
-const express = require('express');
-const cors = require('cors');
-const mongoose = require('mongoose');
-const helmet = require('helmet');
-const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('xss-clean');
-const hpp = require('hpp');
-const compression = require('compression');
-const { generalLimiter } = require('./middleware/rateLimiterMiddleware');
+// Import xss-clean and try to get the function correctly
+import xssCleanModule from 'xss-clean';
+const xss = typeof xssCleanModule === 'function' ? xssCleanModule : xssCleanModule.default;
+
+import hpp from 'hpp';
+import compression from 'compression';
+import path from 'path'; // Added for robust path joining for static files
+import fs from 'fs'; // Added for directory creation
+import { fileURLToPath } from 'url'; // For __dirname in ESM
+
+import { generalLimiter } from './middleware/rateLimiterMiddleware.js';
+import logger from './config/logger.js';
+
+import authRoutes from './routes/authRoutes.js';
+import itemsRoutes from './routes/itemsRoutes.js';
+import imageRoutes from './routes/imageRoutes.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let isGracefullyClosing = false;
-
 const app = express();
 
-console.log('Environment Variables:', {
-    ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS,
-    FRONTEND_URL: process.env.FRONTEND_URL,
-    RENDER_EXTERNAL_URL: process.env.RENDER_EXTERNAL_URL,
-    BACKEND_URL: process.env.BACKEND_URL,
-    MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set'
+logger.info('Application starting...', { node_env: process.env.NODE_ENV });
+logger.debug('Environment Variables Check', {
+    ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS ? 'Set' : 'Not Set',
+    FRONTEND_URL: process.env.FRONTEND_URL ? 'Set' : 'Not Set',
+    RENDER_EXTERNAL_URL: process.env.RENDER_EXTERNAL_URL ? 'Set' : 'Not Set',
+    BACKEND_URL: process.env.BACKEND_URL ? 'Set' : 'Not Set',
+    MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not Set',
+    PORT: process.env.PORT
 });
 
 const isTestEnv = process.env.NODE_ENV === 'test';
 const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!isTestEnv && !MONGODB_URI) {
-    console.error('FATAL ERROR: MONGODB_URI is not defined in the environment variables.');
+    logger.error('FATAL ERROR: MONGODB_URI is not defined. Exiting.'); // Changed to error
     process.exit(1);
 }
 
-// Database connection with better error handling
-if (!isTestEnv) {
-    console.log('=== MONGOOSE CONNECTION DEBUG ===');
-    console.log('Connecting to MongoDB...');
-    console.log('===================================');
+// Ensure upload directories exist
+const uploadDir = path.join(__dirname, 'public', 'uploads', 'images');
+if (!fs.existsSync(uploadDir)) {
+    try {
+        fs.mkdirSync(uploadDir, { recursive: true });
+        logger.info('Upload directory created at startup', { path: uploadDir });
+    } catch (err) {
+        logger.error('Failed to create upload directory at startup', {
+            path: uploadDir,
+            error: err.message
+        });
+    }
+}
 
-    mongoose
-        .connect(MONGODB_URI, {
-            serverSelectionTimeoutMS: 30000
-        })
-        .then(() => {
-            console.log('Connected to MongoDB');
-        })
+if (!isTestEnv) {
+    logger.info('Connecting to MongoDB...', { mongoUriPreview: MONGODB_URI ? MONGODB_URI.substring(0, 20) + '...' : 'N/A' });
+    mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 30000 })
+        .then(() => logger.info('Successfully connected to MongoDB.'))
         .catch((err) => {
-            console.error('Initial MongoDB connection error:', err.message);
+            logger.error('Initial MongoDB connection error. Exiting.', { message: err.message, stack: err.stack }); // Changed to error
             process.exit(1);
         });
 
-    // Handle MongoDB connection errors after initial connection
-    mongoose.connection.on('error', (err) => {
-        console.error('MongoDB connection error:', err);
-    });
-
+    mongoose.connection.on('error', (err) => logger.error('MongoDB connection error after initial connection:', { message: err.message }));
     mongoose.connection.on('disconnected', () => {
-        if (!isGracefullyClosing) {
-            console.warn('MongoDB disconnected. Attempting to reconnect...');
-        }
+        if (!isGracefullyClosing) logger.warn('MongoDB disconnected. Attempting to reconnect...');
     });
-
-    mongoose.connection.on('reconnected', () => {
-        console.log('MongoDB reconnected');
-    });
+    mongoose.connection.on('reconnected', () => logger.info('MongoDB reconnected.'));
 } else {
-    console.log('Test environment detected. Skipping Mongoose connection in server.js.');
+    logger.info('Test environment detected. Skipping direct Mongoose connection in server.js.');
 }
 
-// Security middleware (should be early in the middleware stack)
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -99,139 +101,157 @@ app.use(helmet({
             mediaSrc: ["'self'"],
             frameSrc: ["'none'"],
             objectSrc: ["'none'"],
-            upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
+            // upgradeInsecureRequests is handled below
         }
     },
     crossOriginEmbedderPolicy: false
 }));
+if (process.env.NODE_ENV === 'production' && app.get('helmet').contentSecurityPolicy) {
+    app.get('helmet').contentSecurityPolicy.directives.upgradeInsecureRequests = [];
+}
 
-// CORS configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',')
-    : '*';
+
+const allowedOriginsStr = process.env.ALLOWED_ORIGINS || '';
+const allowedOriginsList = allowedOriginsStr ? allowedOriginsStr.split(',').map(origin => origin.trim()) : '*';
+
 const corsOptions = {
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+        if (allowedOriginsList === '*' || !origin || allowedOriginsList.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            logger.warn('CORS: Origin not allowed', { origin, allowedOriginsList });
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 };
 app.use(cors(corsOptions));
-console.log('CORS middleware initialized with origins:', corsOptions.origin);
+logger.info('CORS middleware initialized', { configuredOrigins: allowedOriginsList === '*' ? 'All (*)' : allowedOriginsList });
 
-// Body parsing middleware
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// Data sanitization against NoSQL query injection
-app.use(mongoSanitize());
-
-// MODIFIED: Custom XSS protection that excludes content field for notes/tasks
 app.use((req, res, next) => {
-    // Only apply XSS protection to non-content fields
-    if (req.body && req.body.content && (req.path.includes('/items') || req.path.includes('/notes'))) {
-        const originalContent = req.body.content;
-        delete req.body.content;
-        
-        // Apply XSS to the rest of the body
-        xss()(req, res, () => {
-            // Restore the original content without XSS processing
-            req.body.content = originalContent;
-            next();
+    const start = Date.now();
+    const { method, originalUrl, ip } = req;
+    const userAgent = req.get('user-agent') || 'unknown';
+    const requestId = req.headers['x-request-id'] || `req-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    req.requestId = requestId;
+
+    logger.http('Incoming request', {
+        requestId,
+        method,
+        url: originalUrl,
+        ip,
+        userAgent,
+    });
+
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        const { statusCode } = res;
+        const contentLength = res.get('Content-Length');
+        const level = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'info';
+        logger.log(level, 'Request finished', {
+            requestId,
+            method,
+            url: originalUrl,
+            statusCode,
+            durationMs: duration,
+            contentLength: contentLength || 'N/A',
+            userId: req.user?.id
         });
-    } else {
-        // Apply normal XSS protection for non-content requests
-        xss()(req, res, next);
-    }
+    });
+    next();
 });
 
-// Prevent parameter pollution
-app.use(hpp({
-    whitelist: ['sort', 'fields', 'page', 'limit'] // Add any query params you want to allow duplicates
-}));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(mongoSanitize());
 
-// Compression middleware
+// Use xss-clean in the standard way. Ensure 'xss' is the actual middleware function.
+if (typeof xss === 'function') {
+    app.use(xss()); // This invokes xss-clean to return its middleware
+} else {
+    logger.error('xss-clean module was not imported as a function. XSS middleware not applied.');
+}
+
+app.use(hpp({ whitelist: ['sort', 'fields', 'page', 'limit'] }));
 app.use(compression());
-
-// Rate limiting
 app.use('/api/', generalLimiter);
 
-// Static files (if you're serving uploaded images)
-app.use('/uploads', express.static('public/uploads'));
+const publicUploadsPath = path.join(__dirname, 'public', 'uploads');
+app.use('/uploads', express.static(publicUploadsPath));
+logger.info('Static file serving configured for /uploads', { path: publicUploadsPath });
 
-// API routes with error handling
 try {
-    console.log('Loading routes...');
-    // Health check endpoint
+    logger.debug('Registering routes...');
     app.get('/api/health', (req, res) => {
         res.status(200).json({
             status: 'ok',
             timestamp: new Date().toISOString(),
             environment: process.env.NODE_ENV,
-            mongoStatus: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+            mongoState: mongoose.connection.readyState
         });
     });
-    
-    // Auth routes
-    const authRoutes = require('./routes/authRoutes');
     app.use('/api/auth', authRoutes);
-    console.log('authRoutes registered successfully');
-    
-    // Items routes
-    const itemsRoutes = require('./routes/itemsRoutes');
+    logger.debug('authRoutes registered.');
     app.use('/api/items', itemsRoutes);
-    console.log('itemsRoutes registered successfully');
-    
-    // Image routes
-    const imageRoutes = require('./routes/imageRoutes');
+    logger.debug('itemsRoutes registered.');
     app.use('/api/images', imageRoutes);
-    console.log('imageRoutes registered successfully');
-
+    logger.debug('imageRoutes registered.');
 } catch (err) {
-    console.error('Error registering routes:', err.stack);
+    logger.error('Error registering routes:', { message: err.message, stack: err.stack }); // Changed to error
     throw err;
 }
 
-// Root endpoint
-app.get('/', (req, res) => res.send('API Running'));
-
-// Handle undefined routes (404) - must come after all route definitions
+app.get('/', (req, res) => res.send('API is operational.'));
 app.all('*', notFoundHandler);
-
-// Global error handling middleware - must be the last middleware
 app.use(globalErrorHandler);
 
-// Start server
-let server;
-if (require.main === module) {
+let serverInstance;
+if (import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}` || (typeof require !== 'undefined' && require.main === module)) {
     const PORT = process.env.PORT || 5001;
-    server = app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-        console.log(`Environment: ${process.env.NODE_ENV}`);
+    serverInstance = app.listen(PORT, () => {
+        logger.info(`Server running on port ${PORT}`, { environment: process.env.NODE_ENV });
     });
-
-    // Handle unhandled promise rejections
-    handleUnhandledRejection(server);
+    handleUnhandledRejection(serverInstance);
 }
 
-process.on('SIGTERM', async () => {
+const shutdown = async (signal) => {
     isGracefullyClosing = true;
-    console.log('👋 SIGTERM RECEIVED. Shutting down gracefully');
-    if (server) {
-        server.close(async () => {
-            console.log('💥 HTTP server closed.');
+    logger.info(`Received ${signal}. Shutting down gracefully...`);
+    if (serverInstance) {
+        serverInstance.close(async () => {
+            logger.info('HTTP server closed.');
             try {
-                await mongoose.connection.close();
-                console.log('MongoDB connection closed.');
+                if (mongoose.connection.readyState === 1) { // Only close if connected
+                    await mongoose.connection.close();
+                    logger.info('MongoDB connection closed.');
+                } else {
+                    logger.info('MongoDB connection already closed or not established.');
+                }
             } catch (err) {
-                console.error('Error closing MongoDB connection:', err);
+                logger.error('Error closing MongoDB connection during shutdown:', { message: err.message });
             } finally {
+                logger.info('Shutdown complete.');
                 process.exit(0);
             }
         });
     } else {
+        logger.info('No active HTTP server to close. Exiting.');
+        if (mongoose.connection.readyState === 1) {
+            try { await mongoose.connection.close(); logger.info('MongoDB connection closed during direct exit.'); }
+            catch (e) { logger.error('Error closing MongoDB on direct exit.', { message: e.message });}
+        }
         process.exit(0);
     }
-});
+    setTimeout(() => {
+        logger.warn('Graceful shutdown timeout. Forcing exit.');
+        process.exit(1);
+    }, 10000);
+};
 
-module.exports = app;
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+export default app;

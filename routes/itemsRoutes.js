@@ -1,121 +1,109 @@
 // routes/itemsRoutes.js
-const express = require('express');
-const { body, param, validationResult, check } = require('express-validator');
-const {
-    getNotesTree,
-    createItem,
-    updateItem,
-    deleteItem,
-    replaceUserTree,
-} = require('../controllers/itemsController');
-const authMiddleware = require('../middleware/authMiddleware');
-const { createItemLimiter } = require('../middleware/rateLimiterMiddleware');
-const { catchAsync, AppError } = require('../middleware/errorHandlerMiddleware');
+import express from 'express';
+import { body, param, validationResult, check } from 'express-validator';
+import {
+  getNotesTree,
+  createItem,
+  updateItem,
+  deleteItem,
+  replaceUserTree,
+  getItem,
+} from '../controllers/itemsController.js';
+import authMiddleware from '../middleware/authMiddleware.js';
+import { createItemLimiter } from '../middleware/rateLimiterMiddleware.js';
+import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
+import User from '../models/User.js';
+import { findItemRecursive } from '../utils/backendTreeUtils.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
-// Middleware to handle validation errors
+// Validation error handler
 const validate = (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        // Simplified error message: just the msg from express-validator
-        const errorMessages = errors.array().map(err => err.msg);
-
-        // The rest of the function remains the same for joining messages
-        let flatErrorMessages = [];
-        errorMessages.forEach(msg => {
-            if (Array.isArray(msg)) {
-                flatErrorMessages = flatErrorMessages.concat(msg);
-            } else {
-                flatErrorMessages.push(msg);
-            }
-        });
-        return next(new AppError(flatErrorMessages.join(', ') || 'Validation error', 400));
-    }
-    next();
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    const errorMessages = errors.array().map((err) => err.msg);
+    const flatErrorMessages = errorMessages.flat();
+    logger.warn('Validation error in itemsRoutes', {
+      errors: flatErrorMessages,
+      path: req.path,
+      userId: req.user?.id,
+    });
+    return next(new AppError(flatErrorMessages.join(', ') || 'Validation error', 400));
+  }
+  next();
 };
 
-// Apply authentication middleware to all routes
 router.use(authMiddleware);
 
-// Validation rules for creating items
+// Validations
 const itemValidations = [
-    body('label')
-        .trim()
-        .notEmpty().withMessage('Label is required.')
-        .isString().withMessage('Label must be a string.')
-        .isLength({ min: 1, max: 255 }).withMessage('Label must be between 1 and 255 characters.'),
-    body('type')
-        .isIn(['folder', 'note', 'task']).withMessage('Invalid item type. Must be folder, note, or task.'),
-    body('content')
-        .optional()
-        .isString().withMessage('Content must be a string.')
-        .customSanitizer(value => {
-            // Don't escape HTML - return the content as-is
-            return value;
-        }),
-    body('completed')
-        .optional()
-        .isBoolean().withMessage('Completed status must be a boolean.'),
+  body('label')
+    .trim()
+    .notEmpty().withMessage('Label is required.')
+    .isString().withMessage('Label must be a string.')
+    .isLength({ min: 1, max: 255 }).withMessage('Label must be between 1 and 255 characters.'),
+  body('type')
+    .isIn(['folder', 'note', 'task']).withMessage('Invalid item type. Must be folder, note, or task.'),
+  body('content')
+    .optional()
+    .isString().withMessage('Content must be a string.')
+    .customSanitizer((value) => value),
+  body('completed')
+    .optional()
+    .isBoolean().withMessage('Completed status must be a boolean.'),
 ];
 
-// Validation rules for updating items
 const updateItemValidations = [
-    body('label')
-        .optional()
-        .trim()
-        .notEmpty().withMessage('Label cannot be empty if provided.')
-        .isString().withMessage('Label must be a string.')
-        .isLength({ min: 1, max: 255 }).withMessage('Label must be between 1 and 255 characters.'),
-    body('content')
-        .optional({ checkFalsy: false })
-        .isString().withMessage('Content must be a string if provided.')
-        .customSanitizer(value => {
-            // Don't escape HTML - return the content as-is
-            return value;
-        }),
-    body('completed')
-        .optional()
-        .isBoolean().withMessage('Completed status must be a boolean if provided.'),
-    check().custom((value, { req }) => {
-        if (Object.keys(req.body).length === 0) {
-            throw new Error('No update data provided. At least one field (label, content, or completed) must be present for an update.');
-        }
-        const allowedFields = ['label', 'content', 'completed', 'direction'];
-        const unknownFields = Object.keys(req.body).filter(key => !allowedFields.includes(key));
-        if (unknownFields.length > 0) {
-            throw new Error(`Unknown field(s) in update request: ${unknownFields.join(', ')}`);
-        }
-        return true;
-    }),
+  body('label')
+    .optional()
+    .trim()
+    .notEmpty().withMessage('Label cannot be empty if provided.')
+    .isString().withMessage('Label must be a string.')
+    .isLength({ min: 1, max: 255 }).withMessage('Label must be between 1 and 255 characters.'),
+  body('content')
+    .optional({ checkFalsy: false })
+    .isString().withMessage('Content must be a string if provided.')
+    .customSanitizer((value) => value),
+  body('completed')
+    .optional()
+    .isBoolean().withMessage('Completed status must be a boolean if provided.'),
+  check().custom((value, { req }) => {
+    if (Object.keys(req.body).length === 0) {
+      throw new Error(
+        'No update data provided. At least one field (label, content, or completed) must be present for an update.'
+      );
+    }
+    const allowedFields = ['label', 'content', 'completed', 'direction'];
+    const unknownFields = Object.keys(req.body).filter((key) => !allowedFields.includes(key));
+    if (unknownFields.length > 0) {
+      throw new Error(`Unknown field(s) in update request: ${unknownFields.join(', ')}`);
+    }
+    return true;
+  }),
 ];
 
-// Validation for itemId parameter
 const itemIdParamValidation = [
-    param('itemId')
-        .trim()
-        .notEmpty().withMessage('Item ID path parameter is required.')
-        .isString().withMessage('Item ID must be a string.'),
+  param('itemId')
+    .trim()
+    .notEmpty().withMessage('Item ID path parameter is required.')
+    .isString().withMessage('Item ID must be a string.'),
 ];
 
-// Validation for parentId parameter
 const parentIdParamValidation = [
-    param('parentId')
-        .trim()
-        .notEmpty().withMessage('Parent ID path parameter is required.')
-        .isString().withMessage('Parent ID must be a string.'),
+  param('parentId')
+    .trim()
+    .notEmpty().withMessage('Parent ID path parameter is required.')
+    .isString().withMessage('Parent ID must be a string.'),
 ];
-
-// ... rest of your routes remain the same
 
 /**
  * @openapi
  * /items/tree:
  *   get:
- *     tags:
- *       - Items
+ *     tags: [Items]
  *     summary: Retrieve the full notes tree for the user
- *     description: Fetches the entire hierarchical structure of notes, folders, and tasks.
+ *     description: Fetches the entire hierarchical structure of notes, folders, and tasks for the authenticated user.
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -128,7 +116,11 @@ const parentIdParamValidation = [
  *       '401':
  *         $ref: '#/components/responses/UnauthorizedError'
  *       '404':
- *         $ref: '#/components/responses/NotFoundError'
+ *         description: User not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       '500':
  *         $ref: '#/components/responses/ServerError'
  */
@@ -138,10 +130,9 @@ router.get('/tree', getNotesTree);
  * @openapi
  * /items/tree:
  *   put:
- *     tags:
- *       - Items
+ *     tags: [Items]
  *     summary: Replace the entire notes tree for the user
- *     description: Replaces the user's current notes and tasks tree with the provided tree structure. Used for full import.
+ *     description: Replaces the user's current notes and tasks tree with the provided tree structure.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -158,10 +149,9 @@ router.get('/tree', getNotesTree);
  *                 type: array
  *                 items:
  *                   $ref: '#/components/schemas/Item'
- *                 description: The new tree structure. Each item should conform to the Item schema, but IDs will be server-generated if not valid UUIDs. Timestamps will be handled by the server.
  *     responses:
  *       '200':
- *         description: Tree replaced successfully. Returns the new tree.
+ *         description: Tree replaced successfully.
  *         content:
  *           application/json:
  *             schema:
@@ -175,7 +165,7 @@ router.get('/tree', getNotesTree);
  *                   items:
  *                     $ref: '#/components/schemas/Item'
  *       '400':
- *         description: Invalid input (e.g., newTree is not an array or items within are malformed).
+ *         description: Invalid input.
  *         content:
  *           application/json:
  *             schema:
@@ -192,50 +182,49 @@ router.get('/tree', getNotesTree);
  *         $ref: '#/components/responses/ServerError'
  */
 router.put(
-    '/tree',
-    [
-        body('newTree')
-            .isArray().withMessage('Invalid tree data: newTree must be an array.')
-            .custom((value) => {
-                if (!Array.isArray(value)) return true;
-                for (const item of value) {
-                    if (typeof item !== 'object' || item === null) {
-                        throw new Error('Each item in newTree must be an object.');
-                    }
-                    if (!item.hasOwnProperty('label') || typeof item.label !== 'string' || item.label.trim() === '') {
-                        throw new Error('Each item in newTree must have a non-empty label.');
-                    }
-                    if (!item.hasOwnProperty('type') || !['folder', 'note', 'task'].includes(item.type)) {
-                        throw new Error('Each item in newTree must have a valid type (folder, note, task).');
-                    }
-                }
-                return true;
-            }),
-    ],
-    validate,
-    replaceUserTree
+  '/tree',
+  [
+    body('newTree')
+      .isArray().withMessage('Invalid tree data: newTree must be an array.')
+      .custom((value) => {
+        if (!Array.isArray(value)) return true;
+        for (const item of value) {
+          if (typeof item !== 'object' || item === null) {
+            throw new Error('Each item in newTree must be an object.');
+          }
+          if (!item.hasOwnProperty('label') || typeof item.label !== 'string' || item.label.trim() === '') {
+            throw new Error('Each item in newTree must have a non-empty label.');
+          }
+          if (!item.hasOwnProperty('type') || !['folder', 'note', 'task'].includes(item.type)) {
+            throw new Error('Each item in newTree must have a valid type (folder, note, task).');
+          }
+        }
+        return true;
+      }),
+  ],
+  validate,
+  replaceUserTree
 );
 
 /**
  * @openapi
  * /items:
  *   post:
- *     tags:
- *       - Items
+ *     tags: [Items]
  *     summary: Create a new item at the root level
  *     description: Adds a new note, folder, or task to the top level of the user's tree.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
  *       required: true
- *       description: Data for the new item. ID should not be provided (server generates it).
+ *       description: Data for the new item.
  *       content:
  *         application/json:
  *           schema:
  *             $ref: '#/components/schemas/CreateItemInput'
  *     responses:
  *       '201':
- *         description: Item created successfully. Returns the newly created item.
+ *         description: Item created successfully.
  *         content:
  *           application/json:
  *             schema:
@@ -253,30 +242,29 @@ router.post('/', createItemLimiter, ...itemValidations, validate, createItem);
  * @openapi
  * /items/{parentId}:
  *   post:
- *     tags:
- *       - Items
+ *     tags: [Items]
  *     summary: Create a new item as a child of a folder
  *     description: Adds a new note, folder, or task inside the specified parent folder.
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: parentId
+ *       - name: parentId
+ *         in: path
+ *         required: true
  *         schema:
  *           type: string
- *         required: true
- *         description: The ID of the parent folder where the new item should be created.
+ *         description: The ID of the parent folder.
  *         example: folder-123
  *     requestBody:
  *       required: true
- *       description: Data for the new item. ID should not be provided.
+ *       description: Data for the new item.
  *       content:
  *         application/json:
  *           schema:
  *             $ref: '#/components/schemas/CreateItemInput'
  *     responses:
  *       '201':
- *         description: Item created successfully. Returns the newly created item.
+ *         description: Item created successfully.
  *         content:
  *           application/json:
  *             schema:
@@ -295,32 +283,63 @@ router.post('/:parentId', createItemLimiter, ...parentIdParamValidation, ...item
 /**
  * @openapi
  * /items/{itemId}:
- *   patch:
- *     tags:
- *       - Items
- *     summary: Update an existing item
- *     description: Partially updates an item's properties (e.g., label, content, task completion). Does not handle moving items between parents.
+ *   get:
+ *     tags: [Items]
+ *     summary: Get a specific item by ID
+ *     description: Retrieves a single item by its ID.
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: itemId'
- *         schema:
- *         name: itemId
- *           type: string
+ *       - name: itemId
+ *         in: path
  *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the item to retrieve.
+ *         example: note-456
+ *     responses:
+ *       '200':
+ *         description: Item retrieved successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Item'
+ *       '401':
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       '404':
+ *         $ref: '#/components/responses/NotFoundError'
+ *       '500':
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.get('/:itemId', ...itemIdParamValidation, validate, getItem);
+
+/**
+ * @openapi
+ * /items/{itemId}:
+ *   patch:
+ *     tags: [Items]
+ *     summary: Update an existing item
+ *     description: Partially updates an item's properties.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: itemId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
  *         description: The ID of the item to update.
  *         example: note-456
  *     requestBody:
  *       required: true
- *       description: Fields to update. Include only the properties you want to change. At least one property must be provided.
+ *       description: Fields to update.
  *       content:
  *         application/json:
  *           schema:
  *             $ref: '#/components/schemas/UpdateItemInput'
  *     responses:
  *       '200':
- *         description: Item updated successfully. Returns the updated item.
+ *         description: Item updated successfully.
  *         content:
  *           application/json:
  *             schema:
@@ -340,23 +359,22 @@ router.patch('/:itemId', ...itemIdParamValidation, ...updateItemValidations, val
  * @openapi
  * /items/{itemId}:
  *   delete:
- *     tags:
- *       - Items
+ *     tags: [Items]
  *     summary: Delete an item
  *     description: Deletes an item (and all its children if it's a folder).
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: itemId
+ *       - name: itemId
+ *         in: path
+ *         required: true
  *         schema:
  *           type: string
- *         required: true
  *         description: The ID of the item to delete.
  *         example: folder-123
  *     responses:
  *       '200':
- *         description: Item deleted successfully or item not found (considered successful deletion).
+ *         description: Item deleted successfully or item not found.
  *         content:
  *           application/json:
  *             schema:
@@ -384,27 +402,4 @@ router.patch('/:itemId', ...itemIdParamValidation, ...updateItemValidations, val
  */
 router.delete('/:itemId', ...itemIdParamValidation, validate, deleteItem);
 
-// Updated GET single item endpoint with error handling
-router.get('/:itemId', authMiddleware, catchAsync(async (req, res, next) => {
-    console.log('GET /:itemId: itemId=', req.params.itemId);
-
-    const User = require('../models/User');
-    const { findItemRecursive } = require('../utils/backendTreeUtils');
-
-    const user = await User.findById(req.user.id);
-    if (!user) {
-        return next(new AppError('User not found', 404));
-    }
-
-    const currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
-    const itemSearchResult = findItemRecursive(currentTree, req.params.itemId);
-
-    if (!itemSearchResult || !itemSearchResult.item) {
-        console.log('GET /:itemId: Item not found');
-        return next(new AppError('Item not found', 404));
-    }
-
-    res.json(itemSearchResult.item);
-}));
-
-module.exports = router;
+export default router;

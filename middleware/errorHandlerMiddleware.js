@@ -1,4 +1,5 @@
 // middleware/errorHandlerMiddleware.js
+import logger from '../config/logger.js';
 
 class AppError extends Error {
     constructor(message, statusCode, isOperational = true) {
@@ -6,19 +7,18 @@ class AppError extends Error {
         this.statusCode = statusCode;
         this.isOperational = isOperational;
         this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
-        
         Error.captureStackTrace(this, this.constructor);
     }
 }
 
-// MongoDB/Mongoose error handlers
 const handleCastErrorDB = (err) => {
     const message = `Invalid ${err.path}: ${err.value}`;
     return new AppError(message, 400);
 };
 
 const handleDuplicateFieldsDB = (err) => {
-    const value = err.errmsg.match(/(["'])(\\?.)*?\1/)[0];
+    const valueMatch = err.errmsg?.match(/(["'])(\\?.)*?\1/);
+    const value = valueMatch ? valueMatch[0] : (err.keyValue ? JSON.stringify(err.keyValue) : 'unknown');
     const message = `Duplicate field value: ${value}. Please use another value!`;
     return new AppError(message, 400);
 };
@@ -29,134 +29,122 @@ const handleValidationErrorDB = (err) => {
     return new AppError(message, 400);
 };
 
-const handleJWTError = () => 
-    new AppError('Invalid token. Please log in again!', 401);
+const handleJWTError = () => new AppError('Invalid token. Please log in again!', 401);
+const handleJWTExpiredError = () => new AppError('Your token has expired! Please log in again.', 401);
 
-const handleJWTExpiredError = () =>
-    new AppError('Your token has expired! Please log in again.', 401);
-
-// Multer error handlers
 const handleMulterError = (err) => {
     if (err.code === 'LIMIT_FILE_SIZE') {
         return new AppError('File too large. Maximum size is 10MB.', 413);
     }
-    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-        return new AppError('Too many files uploaded.', 400);
-    }
-    if (err.code === 'LIMIT_FIELD_COUNT') {
-        return new AppError('Too many fields.', 400);
-    }
-    return new AppError('File upload error.', 400);
+    return new AppError(err.message || 'File upload error.', 400);
 };
 
-// Send error response in development
 const sendErrorDev = (err, req, res) => {
-    // API errors
     if (req.originalUrl.startsWith('/api')) {
         return res.status(err.statusCode).json({
             status: err.status,
             error: err.message,
             message: err.message,
             stack: err.stack,
-            err: err // Full error object for debugging
+            err
         });
     }
-    
-    // Non-API errors (if you have any server-rendered pages)
-    console.error('ERROR 💥', err);
-    return res.status(err.statusCode).json({
-        error: 'Something went wrong!'
+    logger.error('DEVELOPMENT ERROR (Non-API)', {
+        errorMessage: err.message,
+        errorStack: err.stack,
+        errorStatus: err.status,
+        errorStatusCode: err.statusCode,
+        isOperational: err.isOperational,
+        url: req.originalUrl
     });
+    return res.status(err.statusCode).json({ error: 'Something went very wrong!' });
 };
 
-// Send error response in production
 const sendErrorProd = (err, req, res) => {
-    // API errors
     if (req.originalUrl.startsWith('/api')) {
-        // Operational, trusted error: send message to client
         if (err.isOperational) {
-            return res.status(err.statusCode).json({
-                error: err.message
-            });
+            return res.status(err.statusCode).json({ error: err.message });
         }
-        
-        // Programming or other unknown error: don't leak error details
-        console.error('ERROR 💥', err);
-        
-        // Send generic message
-        return res.status(500).json({
-            error: 'Something went wrong on the server'
+        logger.error('PRODUCTION API ERROR (Non-Operational)', {
+            errorMessage: err.message,
+            // stack: err.stack, // Optionally omit stack in prod log for non-operational if too verbose
+            url: req.originalUrl,
+            method: req.method,
+            ip: req.ip,
+            requestId: req.requestId
         });
+        return res.status(500).json({ error: 'Something went wrong on the server. Please try again later.' });
     }
-    
-    // Non-API errors
     if (err.isOperational) {
-        return res.status(err.statusCode).json({
-            error: err.message
-        });
+        return res.status(err.statusCode).json({ error: err.message });
     }
-    
-    // Programming or other unknown error
-    console.error('ERROR 💥', err);
-    return res.status(500).json({
-        error: 'Something went wrong!'
+    logger.error('PRODUCTION ERROR (Non-API, Non-Operational)', {
+         errorMessage: err.message,
+         // stack: err.stack,
+         url: req.originalUrl,
+         requestId: req.requestId
     });
+    return res.status(500).json({ error: 'Something went very wrong!' });
 };
 
-// Main error handling middleware
 const globalErrorHandler = (err, req, res, next) => {
     err.statusCode = err.statusCode || 500;
     err.status = err.status || 'error';
-    
-    // Log error details for monitoring
-    console.error('[Error Handler]', {
-        message: err.message,
+
+    logger.error('Error caught by globalErrorHandler', {
+        errorMessage: err.message,
+        errorName: err.name,
         statusCode: err.statusCode,
+        status: err.status,
         stack: err.stack,
+        isOperational: err.isOperational,
         url: req.originalUrl,
         method: req.method,
         ip: req.ip,
-        user: req.user?.email || 'anonymous'
+        userId: req.user?.id || 'anonymous',
+        requestId: req.requestId
     });
-    
+
     if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
         sendErrorDev(err, req, res);
     } else {
-        let error = { ...err };
-        error.message = err.message;
-        
-        // Handle specific error types
-        if (err.name === 'CastError') error = handleCastErrorDB(error);
-        if (err.code === 11000) error = handleDuplicateFieldsDB(error);
-        if (err.name === 'ValidationError') error = handleValidationErrorDB(error);
-        if (err.name === 'JsonWebTokenError') error = handleJWTError();
-        if (err.name === 'TokenExpiredError') error = handleJWTExpiredError();
-        if (err.name === 'MulterError') error = handleMulterError(error);
-        
+        let error = { ...err, message: err.message };
+
+        if (err.name === 'CastError') error = handleCastErrorDB(err);
+        else if (err.code === 11000) error = handleDuplicateFieldsDB(err);
+        else if (err.name === 'ValidationError') error = handleValidationErrorDB(err);
+        else if (err.name === 'JsonWebTokenError') error = handleJWTError();
+        else if (err.name === 'TokenExpiredError') error = handleJWTExpiredError();
+        else if (err.name === 'MulterError') error = handleMulterError(err);
+
         sendErrorProd(error, req, res);
     }
 };
 
-// Async error wrapper - wraps async route handlers to catch errors
 const catchAsync = (fn) => {
     return (req, res, next) => {
-        fn(req, res, next).catch(next);
+        fn(req, res, next).catch(err => next(err));
     };
 };
 
-// 404 handler middleware
 const notFoundHandler = (req, res, next) => {
-    const err = new AppError(`Can't find ${req.originalUrl} on this server!`, 404);
+    const message = `Can't find ${req.originalUrl} on this server!`;
+    logger.warn('404 Not Found', { url: req.originalUrl, ip: req.ip, method: req.method, requestId: req.requestId });
+    const err = new AppError(message, 404);
     next(err);
 };
 
-// Unhandled rejection handler
-const handleUnhandledRejection = (server) => {
+const handleUnhandledRejection = (serverInstance) => {
     process.on('unhandledRejection', (err) => {
-        console.error('UNHANDLED REJECTION! 💥 Shutting down...');
-        console.error(err.name, err.message);
-        if (server) {
-            server.close(() => {
+        // Use logger.error for critical errors, as fatal is not standard in Winston default levels
+        logger.error('UNHANDLED PROMISE REJECTION! 💥 Shutting down...', {
+            errorName: err.name,
+            errorMessage: err.message,
+            errorStack: err.stack,
+            errorObject: err
+        });
+        if (serverInstance) {
+            serverInstance.close(() => {
                 process.exit(1);
             });
         } else {
@@ -165,16 +153,20 @@ const handleUnhandledRejection = (server) => {
     });
 };
 
-// Uncaught exception handler
 const handleUncaughtException = () => {
     process.on('uncaughtException', (err) => {
-        console.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
-        console.error(err.name, err.message);
+        // Use logger.error for critical errors
+        logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...', {
+            errorName: err.name,
+            errorMessage: err.message,
+            errorStack: err.stack,
+            errorObject: err
+        });
         process.exit(1);
     });
 };
 
-module.exports = {
+export {
     AppError,
     globalErrorHandler,
     catchAsync,

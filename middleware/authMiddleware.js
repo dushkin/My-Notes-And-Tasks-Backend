@@ -1,51 +1,48 @@
 // middleware/authMiddleware.js
-const { verifyAccessToken } = require('../utils/jwt');
-const { AppError } = require('./errorHandlerMiddleware');
-const User = require('../models/User');
+import { verifyAccessToken } from '../utils/jwt.js'; // Assuming ESM
+import { AppError } from './errorHandlerMiddleware.js'; // Assuming ESM
+import User from '../models/User.js'; // Assuming ESM
+import logger from '../config/logger.js'; // Import logger
 
 const authMiddleware = async (req, res, next) => {
-    console.log('authMiddleware: Processing request for', req.path);
+    logger.debug('authMiddleware: Processing request', { path: req.path });
     try {
         const authHeader = req.header('Authorization');
         if (!authHeader) {
-            console.log('authMiddleware: No Authorization header');
+            logger.warn('authMiddleware: No Authorization header', { path: req.path, ip: req.ip });
             return next(new AppError('No token provided', 401));
         }
 
         const token = authHeader.replace('Bearer ', '');
-        console.log('authMiddleware: Token extracted:', token);
+        logger.debug('authMiddleware: Token extracted', { tokenFirstChars: token.substring(0, 10) + "..." });
 
         const decoded = verifyAccessToken(token);
-        console.log('authMiddleware: Decoded JWT:', decoded);
+        logger.debug('authMiddleware: Decoded JWT', { decoded });
 
         if (!decoded || !decoded.user || !decoded.user.id) {
-            console.log('authMiddleware: Invalid decoded payload');
+            logger.warn('authMiddleware: Invalid decoded payload', { decoded, path: req.path, ip: req.ip });
             return next(new AppError('Not authorized, token failed', 401));
         }
 
         const user = await User.findById(decoded.user.id);
         if (!user) {
-            console.log('authMiddleware: User not found');
+            logger.warn('authMiddleware: User not found in DB', { userId: decoded.user.id, path: req.path, ip: req.ip });
             return next(new AppError('Not authorized, user not found', 401));
         }
 
-        req.user = user;
-        console.log('authMiddleware: User attached:', user.email);
+        req.user = user; // User object (with toJSON applied by model) is attached
+        logger.debug('authMiddleware: User attached to request', { userId: user.id, email: user.email, path: req.path });
         next();
     } catch (err) {
-        console.error('authMiddleware: Error:', err.message);
-
-        // Handle specific JWT errors
+        logger.error('authMiddleware: Error during token verification', { message: err.message, name: err.name, path: req.path, ip: req.ip });
         if (err.name === 'JsonWebTokenError') {
             return next(new AppError('Invalid token', 401));
         }
         if (err.name === 'TokenExpiredError') {
             return next(new AppError('Token expired', 401));
         }
-
-        // Generic auth error
-        return next(new AppError('Not authorized, token failed', 401));
+        return next(new AppError('Not authorized, token processing failed', 401));
     }
 };
 
-module.exports = authMiddleware;
+export default authMiddleware; // Assuming ESM

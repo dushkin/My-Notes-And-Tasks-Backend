@@ -1,5 +1,5 @@
 // utils/hash.js
-const bcrypt = require('bcrypt');
+import bcrypt from 'bcrypt';
 
 const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10');
 
@@ -8,7 +8,7 @@ const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10');
  * @param {string} password - The plain text password.
  * @returns {Promise<string>} - A promise that resolves with the hashed password.
  */
-const hashPassword = async (password) => {
+export const hashPassword = async (password) => {
     if (!password) {
         throw new Error('Password is required for hashing.');
     }
@@ -21,15 +21,10 @@ const hashPassword = async (password) => {
  * @param {string} hashedPassword - The stored hashed password.
  * @returns {Promise<boolean>} - A promise that resolves with true if passwords match, false otherwise.
  */
-const comparePassword = async (plainPassword, hashedPassword) => {
+export const comparePassword = async (plainPassword, hashedPassword) => {
     if (!plainPassword || !hashedPassword) {
-        // Avoid errors if one is missing, comparison will just fail
+        // Avoid errors if one is missing, comparison will just fail safely
         return false;
     }
     return bcrypt.compare(plainPassword, hashedPassword);
-};
-
-module.exports = {
-    hashPassword,
-    comparePassword,
 };

@@ -1,6 +1,7 @@
-const mongoose = require('mongoose');
-const { hashPassword, comparePassword } = require('../utils/hash');
-const { generateAccessToken, verifyAccessToken } = require('../utils/jwt');
+// tests/utils.test.js
+import mongoose from 'mongoose';
+import { hashPassword, comparePassword } from '../utils/hash.js';
+import { generateAccessToken, verifyAccessToken } from '../utils/jwt.js';
 
 describe('Hash Utilities', () => {
   it('should hash and verify a password correctly', async () => {
@@ -14,7 +15,7 @@ describe('Hash Utilities', () => {
 
 describe('JWT Utilities', () => {
   it('should generate and verify an access token', () => {
-    const userId = new mongoose.Types.ObjectId().toHexString();
+    const userId = new mongoose.Types.ObjectId().toString(); // Use toString() for string ID
     const token = generateAccessToken(userId);
     expect(typeof token).toBe('string');
     const decoded = verifyAccessToken(token);

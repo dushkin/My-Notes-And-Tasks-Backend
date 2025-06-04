@@ -1,7 +1,11 @@
 // utils/backendTreeUtils.js
-const { v4: uuidv4 } = require('uuid');
+import { v4 as uuidv4_imported } from 'uuid';
 
-function sortItems(items) {
+// Re-export uuidv4 if it's intended to be part of this module's public API
+// and used by other modules importing from backendTreeUtils.js
+export const uuidv4 = uuidv4_imported;
+
+export function sortItems(items) {
     if (!Array.isArray(items)) {
         return [];
     }
@@ -18,7 +22,7 @@ function sortItems(items) {
     });
 }
 
-function findItemRecursive(nodes, itemId) {
+export function findItemRecursive(nodes, itemId) {
     if (!Array.isArray(nodes) || !itemId) return null;
     for (const item of nodes) {
         if (item.id === itemId) return { item, parentArray: nodes };
@@ -30,36 +34,41 @@ function findItemRecursive(nodes, itemId) {
     return null;
 }
 
-function deleteItemInTree(nodes, itemId) {
-    if (!Array.isArray(nodes) || !itemId) return nodes;
+export function deleteItemInTree(nodes, itemId) {
+    if (!Array.isArray(nodes) || !itemId) return nodes; // Return original if not an array or no itemId
     let itemFoundAndDeleted = false;
     const newNodes = nodes.filter(item => {
         if (item.id === itemId) {
             itemFoundAndDeleted = true;
-            return false;
+            return false; // Exclude the item
         }
         return true;
     });
 
+    // If item was found and deleted at the current level, return the new array
     if (itemFoundAndDeleted) {
         return newNodes;
     }
 
-    let treeChanged = false;
+    // If not found at current level, recurse into children of folders
+    // and map to new array only if a child's structure changes
+    let treeChangedInChildren = false;
     const processedNodes = nodes.map(item => {
         if (item.type === 'folder' && Array.isArray(item.children)) {
             const updatedChildren = deleteItemInTree(item.children, itemId);
-            if (updatedChildren !== item.children) {
-                treeChanged = true;
+            if (updatedChildren !== item.children) { // Check if children array actually changed
+                treeChangedInChildren = true;
                 return { ...item, children: updatedChildren };
             }
         }
         return item;
     });
-    return treeChanged ? processedNodes : nodes;
+
+    return treeChangedInChildren ? processedNodes : nodes; // Return original array if no changes in children
 }
 
-function updateItemInTree(nodes, itemId, updates) {
+
+export function updateItemInTree(nodes, itemId, updates) {
     if (!Array.isArray(nodes)) return nodes || [];
     if (!itemId || !updates || Object.keys(updates).length === 0) return nodes;
 
@@ -103,25 +112,25 @@ function updateItemInTree(nodes, itemId, updates) {
                 allowedUpdates.updatedAt = new Date().toISOString(); // Update timestamp
                 return { ...item, ...allowedUpdates };
             }
-            return item;
+            return item; // No valid updates for this item
         }
         if (item.type === 'folder' && Array.isArray(item.children)) {
             const updatedChildren = updateItemInTree(item.children, itemId, updates);
-            if (updatedChildren !== item.children) {
+            if (updatedChildren !== item.children) { // Check if children array actually changed
                 treeModified = true;
                 return { ...item, children: updatedChildren };
             }
         }
         return item;
     });
-    return treeModified ? newNodes : nodes;
+    return treeModified ? newNodes : nodes; // Return original array if no changes
 }
 
 
-function hasSiblingWithName(siblings, nameToCheck, excludeId = null) {
+export function hasSiblingWithName(siblings, nameToCheck, excludeId = null) {
     if (!Array.isArray(siblings) || !nameToCheck) return false;
     const normalizedName = nameToCheck.trim().toLowerCase();
-    if (!normalizedName) return false;
+    if (!normalizedName) return false; // Empty name after trim doesn't conflict
     return siblings.some(sibling =>
         sibling &&
         sibling.id !== excludeId &&
@@ -130,11 +139,14 @@ function hasSiblingWithName(siblings, nameToCheck, excludeId = null) {
     );
 }
 
-function ensureServerSideIdsAndStructure(item) {
+export function ensureServerSideIdsAndStructure(item) {
     const newItem = { ...item };
     const now = new Date().toISOString();
 
-    newItem.id = newItem.id && typeof newItem.id === 'string' && !newItem.id.startsWith('client-') && !newItem.id.startsWith('temp-') ? newItem.id : uuidv4();
+    // Ensure ID exists and is a valid server-side ID (UUID) or generate one
+    newItem.id = newItem.id && typeof newItem.id === 'string' &&
+                 !newItem.id.startsWith('client-') && !newItem.id.startsWith('temp-') // Basic check for client-side IDs
+                 ? newItem.id : uuidv4_imported(); // Use the imported uuid
 
     newItem.label = (typeof newItem.label === 'string' && newItem.label.trim())
         ? newItem.label.trim()
@@ -145,38 +157,33 @@ function ensureServerSideIdsAndStructure(item) {
         newItem.type = (Array.isArray(newItem.children) && newItem.children.length > 0) ? 'folder' : 'note';
     }
 
-    if (!newItem.createdAt || typeof newItem.createdAt !== 'string' || new Date(newItem.createdAt).toString() === 'Invalid Date') {
+    // Ensure timestamps are valid ISO strings or set them
+    try {
+        if (!newItem.createdAt || new Date(newItem.createdAt).toISOString() !== newItem.createdAt) {
+            newItem.createdAt = now;
+        }
+    } catch (e) {
         newItem.createdAt = now;
     }
-    newItem.updatedAt = now;
+    newItem.updatedAt = now; // Always set/update updatedAt on server processing
 
     if (newItem.type === 'folder') {
         newItem.children = Array.isArray(newItem.children)
-            ? newItem.children.map(child => ensureServerSideIdsAndStructure(child))
+            ? newItem.children.map(child => ensureServerSideIdsAndStructure(child)) // Recurse
             : [];
-        delete newItem.content;
+        delete newItem.content; // Folders don't have content/completed/direction
         delete newItem.completed;
         delete newItem.direction;
     } else if (newItem.type === 'note') {
         newItem.content = (typeof newItem.content === 'string') ? newItem.content : "";
         newItem.direction = (newItem.direction === 'rtl' || newItem.direction === 'ltr') ? newItem.direction : 'ltr';
-        delete newItem.children;
+        delete newItem.children; // Notes don't have children/completed
         delete newItem.completed;
     } else if (newItem.type === 'task') {
         newItem.content = (typeof newItem.content === 'string') ? newItem.content : "";
         newItem.completed = typeof newItem.completed === 'boolean' ? newItem.completed : false;
         newItem.direction = (newItem.direction === 'rtl' || newItem.direction === 'ltr') ? newItem.direction : 'ltr';
-        delete newItem.children;
+        delete newItem.children; // Tasks don't have children
     }
     return newItem;
 }
-
-module.exports = {
-    sortItems,
-    findItemRecursive,
-    deleteItemInTree,
-    updateItemInTree,
-    hasSiblingWithName,
-    ensureServerSideIdsAndStructure,
-    uuidv4
-};

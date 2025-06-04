@@ -1,5 +1,5 @@
 // models/RefreshToken.js
-const mongoose = require('mongoose');
+import mongoose from 'mongoose'; // Changed from require
 const Schema = mongoose.Schema;
 
 const refreshTokenSchema = new Schema({
@@ -39,6 +39,7 @@ const refreshTokenSchema = new Schema({
     }
 });
 
-refreshTokenSchema.index({ userId: 1, isRevoked: 1 });
+refreshTokenSchema.index({ userId: 1, isRevoked: 1 }); // [cite: 172, 183]
 
-module.exports = mongoose.model('RefreshToken', refreshTokenSchema);
+// Changed from module.exports
+export default mongoose.model('RefreshToken', refreshTokenSchema);

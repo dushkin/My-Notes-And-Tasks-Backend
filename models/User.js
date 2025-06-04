@@ -1,29 +1,26 @@
 // models/User.js
-const mongoose = require('mongoose');
-const Schema = mongoose.Schema;
+import mongoose from 'mongoose'; // Changed from require
+const Schema = mongoose.Schema; // [cite: 173, 184]
 
 const userSchema = new Schema({
     email: {
         type: String,
         required: [true, 'Email is required'],
-        unique: true, // Ensure emails are unique
-        lowercase: true, // Store emails in lowercase
-        trim: true, // Remove whitespace
-        match: [/\S+@\S+\.\S+/, 'Please use a valid email address'], // Basic email format validation
-        index: true, // Add an index for faster querying by email
+        unique: true,
+        lowercase: true,
+        trim: true,
+        match: [/\S+@\S+\.\S+/, 'Please use a valid email address'],
+        index: true, // [cite: 174, 185]
     },
     password: {
         type: String,
         required: [true, 'Password is required'],
-        minlength: [8, 'Password must be at least 8 characters long'], // Enforce minimum length
+        minlength: [8, 'Password must be at least 8 characters long'],
     },
-    // Store the user's notes/tasks tree directly within the user document
-    // It defaults to an empty array, matching the frontend's initial state expectation
     notesTree: {
-        type: Schema.Types.Mixed, // Allows storing arbitrary nested objects/arrays
-        default: [],
+        type: Schema.Types.Mixed,
+        default: [], // [cite: 175, 186]
     },
-    // Optional: Add timestamps for creation and updates
     createdAt: {
         type: Date,
         default: Date.now,
@@ -34,20 +31,18 @@ const userSchema = new Schema({
     },
 });
 
-// Middleware to update the 'updatedAt' field on save
 userSchema.pre('save', function (next) {
-    if (this.isModified()) { // only update if the document was modified
+    if (this.isModified()) {
         this.updatedAt = Date.now();
     }
     next();
 });
 
-
-// IMPORTANT: Selectively remove password field when converting document to JSON
 userSchema.methods.toJSON = function () {
-    var obj = this.toObject(); // or var obj = this._doc;
-    delete obj.password; // remove password hash from responses
-    return obj;
-}
+    var obj = this.toObject(); // [cite: 177, 188]
+    delete obj.password; // [cite: 178, 189]
+    return obj; // [cite: 178, 189]
+};
 
-module.exports = mongoose.model('User', userSchema);
+// Changed from module.exports
+export default mongoose.model('User', userSchema);
