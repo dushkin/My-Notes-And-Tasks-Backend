@@ -1,9 +1,10 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.4.2",
-  "commitMessage": "Minor changes",
+  "version": "3.5.0",
+  "commitMessage": "Added image upload security headers support",
   "description": "",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
@@ -12,9 +13,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
   "dependencies": {
     "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.2",
+    "clamav.js": "^0.12.0",
     "compression": "^1.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
@@ -22,6 +24,7 @@
     "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^7.5.0",
     "express-validator": "^7.2.1",
+    "file-type": "^21.0.0",
     "helmet": "^8.1.0",
     "hpp": "^0.2.3",
     "jsonwebtoken": "^9.0.2",

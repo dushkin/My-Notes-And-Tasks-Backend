@@ -21,7 +21,7 @@ const xss = typeof xssCleanModule === 'function' ? xssCleanModule : xssCleanModu
 
 import hpp from 'hpp';
 import compression from 'compression';
-import path, { dirname } from 'path'; // Correctly import dirname
+import path, { dirname } from 'path';  // Ensure dirname is imported
 import { fileURLToPath } from 'url';
 
 import { generalLimiter } from './middleware/rateLimiterMiddleware.js';
@@ -31,8 +31,22 @@ import authRoutes from './routes/authRoutes.js';
 import itemsRoutes from './routes/itemsRoutes.js';
 import imageRoutes from './routes/imageRoutes.js';
 
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION DETAILS:');
+  console.error('Error name:', err.name);
+  console.error('Error message:', err.message);
+  console.error('Error stack:', err.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('UNHANDLED REJECTION DETAILS:');
+  console.error('Error:', err);
+  process.exit(1);
+});
+
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename); // Now dirname is defined
+const __dirname = dirname(__filename);
 
 let isGracefullyClosing = false;
 const app = express();
@@ -44,7 +58,7 @@ logger.debug('Environment Variables Check', {
     RENDER_EXTERNAL_URL: process.env.RENDER_EXTERNAL_URL ? 'Set' : 'Not Set',
     BACKEND_URL: process.env.BACKEND_URL ? 'Set' : 'Not Set',
     MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not Set',
-    PORT: process.env.PORT
+    PORT: process.env.PORT ? process.env.PORT : 'Not Set'
 });
 
 const isTestEnv = process.env.NODE_ENV === 'test';
@@ -56,7 +70,7 @@ if (!isTestEnv && !MONGODB_URI) {
 }
 
 if (!isTestEnv) {
-    logger.info('Connecting to MongoDB...', { mongoUriPreview: MONGODB_URI ? MONGODB_URI.substring(0, 20) + '...' : 'N/A' });
+    logger.info('Connecting to MongoDB...', { mongoUriPreview: MONGODB_URI.substring(0, 20) + '...' });
     mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 30000 })
         .then(() => logger.info('Successfully connected to MongoDB.'))
         .catch((err) => {
@@ -64,7 +78,9 @@ if (!isTestEnv) {
             process.exit(1);
         });
 
-    mongoose.connection.on('error', (err) => logger.error('MongoDB connection error after initial connection:', { message: err.message }));
+    mongoose.connection.on('error', (err) =>
+        logger.error('MongoDB connection error after initial connection:', { message: err.message })
+    );
     mongoose.connection.on('disconnected', () => {
         if (!isGracefullyClosing) logger.warn('MongoDB disconnected. Attempting to reconnect...');
     });
@@ -73,25 +89,12 @@ if (!isTestEnv) {
     logger.info('Test environment detected. Skipping direct Mongoose connection in server.js.');
 }
 
+// --- Apply tightened HTTP headers early ---------------------------------------
+// app.use(securityHeaders);
 app.use(helmet({
-    contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'"],
-            scriptSrc: ["'self'"],
-            imgSrc: ["'self'", "data:", "blob:", "https:"],
-            fontSrc: ["'self'", "data:"],
-            connectSrc: ["'self'"],
-            mediaSrc: ["'self'"],
-            frameSrc: ["'none'"],
-            objectSrc: ["'none'"],
-        }
-    },
-    crossOriginEmbedderPolicy: false
+  contentSecurityPolicy: false,  // Disable CSP for now
+  crossOriginEmbedderPolicy: false
 }));
-if (process.env.NODE_ENV === 'production' && app.get('helmet').contentSecurityPolicy) {
-    app.get('helmet').contentSecurityPolicy.directives.upgradeInsecureRequests = [];
-}
 
 const allowedOriginsStr = process.env.ALLOWED_ORIGINS || '';
 const allowedOriginsList = allowedOriginsStr ? allowedOriginsStr.split(',').map(origin => origin.trim()) : '*';

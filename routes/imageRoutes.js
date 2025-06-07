@@ -6,6 +6,8 @@ import fs from 'fs';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
+import { fileTypeFromFile } from 'file-type'; 
+import clamav from 'clamav.js';
 
 import authMiddleware from '../middleware/authMiddleware.js';
 import { uploadLimiter } from '../middleware/rateLimiterMiddleware.js';
@@ -22,7 +24,7 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif',
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
 
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
+  destination(req, file, cb) {
     try {
       if (!fs.existsSync(UPLOAD_DIR)) {
         fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -30,14 +32,11 @@ const storage = multer.diskStorage({
       }
       cb(null, UPLOAD_DIR);
     } catch (err) {
-      logger.error('Failed to create upload directory during request', {
-        path: UPLOAD_DIR,
-        error: err.message
-      });
+      logger.error('Failed to create upload directory', { path: UPLOAD_DIR, error: err.message });
       cb(new AppError('Failed to prepare upload location.', 500), null);
     }
   },
-  filename: function (req, file, cb) {
+  filename(req, file, cb) {
     const uniqueSuffix = uuidv4();
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, uniqueSuffix + ext);
@@ -47,68 +46,65 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   const userId = req.user?.id || 'anonymous';
   if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-    logger.warn('Upload rejected: Invalid file type', {
-      userId,
-      mimetype: file.mimetype,
-      originalname: file.originalname
-    });
-    return cb(
-      new AppError('Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.', 400),
-      false
-    );
+    logger.warn('Upload rejected: Invalid file type', { userId, mimetype: file.mimetype, originalname: file.originalname });
+    return cb(new AppError('Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.', 400), false);
   }
-
   const ext = path.extname(file.originalname).toLowerCase();
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
-    logger.warn('Upload rejected: Invalid file extension', {
-      userId,
-      extension: ext,
-      originalname: file.originalname
-    });
-    return cb(
-      new AppError(
-        'Invalid file extension. Only .jpg, .jpeg, .png, .gif, and .webp files are allowed.',
-        400
-      ),
-      false
-    );
+    logger.warn('Upload rejected: Invalid file extension', { userId, extension: ext });
+    return cb(new AppError('Invalid file extension. Only .jpg, .jpeg, .png, .gif, and .webp are allowed.', 400), false);
   }
-
   cb(null, true);
 };
 
 const scanFile = async (filePath) => {
-  logger.debug('Scanning file (basic check)', { filePath });
+  logger.debug('Scanning file (advanced)', { filePath });
   try {
-    const buffer = fs.readFileSync(filePath);
-    const jpegHeader = buffer.slice(0, 3).toString('hex') === 'ffd8ff';
-    const pngHeader = buffer.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
-    const gifHeader =
-      buffer.slice(0, 6).toString('ascii') === 'GIF87a' ||
-      buffer.slice(0, 6).toString('ascii') === 'GIF89a';
-    const webpHeader =
-      buffer.slice(0, 4).toString('ascii') === 'RIFF' &&
-      buffer.slice(8, 12).toString('ascii') === 'WEBP';
-    const ext = path.extname(filePath).toLowerCase();
-    let isValidType = false;
-    if ((ext === '.jpg' || ext === '.jpeg') && jpegHeader) isValidType = true;
-    else if (ext === '.png' && pngHeader) isValidType = true;
-    else if (ext === '.gif' && gifHeader) isValidType = true;
-    else if (ext === '.webp' && webpHeader) isValidType = true;
-    if (!isValidType) {
-      logger.warn('File scan failed: Invalid magic bytes for extension', { filePath, ext });
-      throw new AppError(`Invalid ${ext.substring(1).toUpperCase()} file based on content.`, 400);
-    }
+  // 1. Signature sniffing using file-type
+  const ft = await fileTypeFromFile(filePath);            // ? use named import
+  if (!ft || !ALLOWED_MIME_TYPES.includes(ft.mime)) {
+    logger.warn('Upload rejected: content type mismatch', { filePath, detectedMime: ft?.mime });
+    throw new AppError('Invalid file content type. Only JPEG, PNG, GIF, and WebP are allowed.', 400);
+  }
 
-    const suspiciousPatterns = ['<script', '<?php', '<%', 'javascript:', 'vbscript:', 'onload=', 'onerror='];
-    const fileContentAscii = buffer.toString('ascii', 0, Math.min(buffer.length, 1024)).toLowerCase();
+  // 2. Antivirus scan with ClamAV
+  await new Promise((resolve, reject) => {
+    const scanner = clamav.createScanner();
+    scanner.scanFile(filePath, (err, good) => {
+      if (err) return reject(err);
+      resolve(good);
+    });
+  }).then(() => {
+    logger.info('ClamAV scan passed', { filePath });
+  }).catch(err => {
+    logger.error('ClamAV detected malicious file or scan error', { filePath, error: err.message });
+    throw new AppError('Malicious file detected', 400);
+  });
 
-    for (const pattern of suspiciousPatterns) {
-      if (fileContentAscii.includes(pattern)) {
-        logger.warn('File scan failed: Suspicious pattern detected', { filePath, pattern });
-        throw new AppError('Suspicious content detected in file', 400);
-      }
+  // 3. Legacy magic-byte & pattern checks
+  const buffer = fs.readFileSync(filePath);
+  const jpegHeader = buffer.slice(0, 3).toString('hex') === 'ffd8ff';
+  const pngHeader  = buffer.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
+  const gifHeader  = ['GIF87a','GIF89a'].includes(buffer.slice(0,6).toString('ascii'));
+  const webpHeader = buffer.slice(0,4).toString('ascii') === 'RIFF' && buffer.slice(8,12).toString('ascii') === 'WEBP';
+  const ext = path.extname(filePath).toLowerCase();
+  let valid = false;
+  if ((ext === '.jpg' || ext === '.jpeg') && jpegHeader) valid = true;
+  else if (ext === '.png' && pngHeader) valid = true;
+  else if (ext === '.gif' && gifHeader) valid = true;
+  else if (ext === '.webp' && webpHeader) valid = true;
+  if (!valid) {
+    logger.warn('Magic-byte check failed', { filePath, ext });
+    throw new AppError(`Invalid ${ext.substring(1).toUpperCase()} file based on content.`, 400);
+  }
+  const suspicious = ['<script','<?php','<%','javascript:','vbscript:','onload=','onerror='];
+  const head = buffer.toString('ascii', 0, Math.min(buffer.length,1024)).toLowerCase();
+  for (const pat of suspicious) {
+    if (head.includes(pat)) {
+      logger.warn('Suspicious pattern detected', { filePath, pattern: pat });
+      throw new AppError('Suspicious content detected in file', 400);
     }
+  }
 
     return true;
   } catch (error) {
@@ -121,31 +117,30 @@ const scanFile = async (filePath) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: {
-    fileSize: 10 * 1024 * 1024,
-    files: 1
-  }
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 }
 });
 
 const processImageAndLog = async (filePath, originalName, userId) => {
   logger.debug('Starting image processing', { userId, filePath, originalName });
   try {
     await scanFile(filePath);
+
     const image = sharp(filePath);
     const metadata = await image.metadata();
     if (metadata.width > 10000 || metadata.height > 10000) {
-      logger.warn('Image dimensions too large during processing', {
-        userId,
-        originalName,
-        width: metadata.width,
-        height: metadata.height
-      });
-      throw new AppError('Image dimensions too large', 400);
+      logger.warn('Image dimensions too large', { userId, originalName, width: metadata.width, height: metadata.height });
+      throw new AppError('Image dimensions exceed allowed maximum', 400);
     }
 
-    const processedBuffer = await image.rotate().toBuffer();
+    // 2. Re-encode & strip all metadata
+    const processedBuffer = await image
+      .rotate()
+      .toFormat(metadata.format)
+      .withMetadata(false)
+      .toBuffer();
 
     fs.writeFileSync(filePath, processedBuffer);
+
     logger.info('Image processed successfully', {
       userId,
       originalName,
@@ -154,32 +149,20 @@ const processImageAndLog = async (filePath, originalName, userId) => {
       originalWidth: metadata.width,
       originalHeight: metadata.height
     });
+
     return {
       width: metadata.width,
       height: metadata.height,
       format: metadata.format,
       size: processedBuffer.length
     };
-  } catch (error) {
-    logger.error('Image processing failed', {
-      userId,
-      filePath,
-      originalName,
-      message: error.message,
-      stack: error.stack
-    });
+  } catch (err) {
+    logger.error('Image processing exception', { userId, originalName, filePath, message: err.message });
     if (fs.existsSync(filePath)) {
-      try {
-        fs.unlinkSync(filePath);
-      } catch (e) {
-        logger.warn('Failed to delete temp file after processing error', {
-          filePath,
-          error: e.message
-        });
-      }
+      try { fs.unlinkSync(filePath); } catch {/* ignore */}
     }
-    if (error instanceof AppError) throw error;
-    throw new AppError(`Image processing failed: ${error.message}`, 500);
+    if (err instanceof AppError) throw err;
+    throw new AppError(`Image processing failed: ${err.message}`, 500);
   }
 };
 
@@ -258,91 +241,27 @@ router.post(
   upload.single('image'),
   catchAsync(async (req, res, next) => {
     const userId = req.user?.id || 'anonymous_upload_user';
-
-    logger.info('[IMAGE UPLOAD] Request received by handler', {
-      userId,
-      fileInfo: req.file
-        ? {
-            originalname: req.file.originalname,
-            size: req.file.size,
-            mimetype: req.file.mimetype,
-            filename: req.file.filename
-          }
-        : 'No file in req'
-    });
-
     if (!req.file) {
-      logger.warn('[IMAGE UPLOAD] No file available in request after multer processing', { userId });
-      return next(new AppError('No image file uploaded or file processing failed earlier.', 400));
+      logger.warn('[IMAGE UPLOAD] No file after multer', { userId });
+      return next(new AppError('No image uploaded.', 400));
     }
 
-    const imageInfo = await processImageAndLog(req.file.path, req.file.originalname, userId);
+    const info = await processImageAndLog(req.file.path, req.file.originalname, userId);
     const filename = req.file.filename;
-
-    let baseUrl = process.env.RENDER_EXTERNAL_URL;
-    if (!baseUrl) {
-      baseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
-      if (process.env.NODE_ENV === 'development' && !process.env.BACKEND_URL) {
-        const port = process.env.PORT || 5001;
-        baseUrl = `http://localhost:${port}`;
-      }
-    }
-    if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
-    const relativeImagePath = `/uploads/images/${filename}`;
-    const absoluteImageUrl = `${baseUrl}${relativeImagePath}`;
-
-    logger.info(`[IMAGE UPLOAD] Success. Image URL: ${absoluteImageUrl}`, {
-      userId,
-      filename: req.file.filename
-    });
+    let baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
     res.status(201).json({
-      url: absoluteImageUrl,
-      metadata: {
-        width: imageInfo.width,
-        height: imageInfo.height,
-        format: imageInfo.format,
-        size: imageInfo.size
-      }
+      url: `${baseUrl}/uploads/images/${filename}`,
+      metadata: info
     });
   }),
   (error, req, res, next) => {
     const userId = req.user?.id || 'anonymous_upload_user';
-    logger.warn('[IMAGE UPLOAD] Error caught by route-specific error handler', {
-      userId,
-      message: error.message,
-      code: error.code,
-      name: error.name,
-      stack: error.stack
-    });
-    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
-      try {
-        fs.unlinkSync(req.file.path);
-        logger.info('Temporary uploaded file deleted after error', {
-          userId,
-          filePath: req.file.path
-        });
-      } catch (e) {
-        logger.warn('Failed to delete temporary file after error', {
-          userId,
-          filePath: req.file.path,
-          error: e.message
-        });
-      }
+    logger.warn('[IMAGE UPLOAD] Route-handler error', { userId, message: error.message });
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+      logger.info('Deleted temp file after error', { filePath: req.file.path });
     }
-
-    if (error instanceof multer.MulterError) {
-      if (error.code === 'LIMIT_FILE_SIZE') {
-        return next(
-          new AppError(
-            `Image file is too large. Max ${upload.limits.fileSize / (1024 * 1024)}MB allowed.`,
-            413
-          )
-        );
-      }
-      return next(new AppError(`Upload error: ${error.message}`, 400));
-    }
-
-    next(error);
+    next(new AppError(`Upload error: ${error.message}`, 400));
   }
 );
 
