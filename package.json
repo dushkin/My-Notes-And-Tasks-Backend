@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.5.0",
-  "commitMessage": "Added image upload security headers support",
+  "version": "3.6.0",
+  "commitMessage": "Extended express-validator chains",
   "description": "",
   "main": "server.js",
   "type": "module",

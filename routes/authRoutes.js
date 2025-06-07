@@ -247,7 +247,17 @@ router.post(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post('/logout', logout);
+router.post(
+  '/logout',
+  [
+    body('refreshToken')
+      .optional()
+      .isString().withMessage('Refresh token must be a string if provided')
+      .isLength({ min: 10 }).withMessage('Invalid refresh token format')
+  ],
+  validate,
+  logout
+);
 
 /**
  * @openapi

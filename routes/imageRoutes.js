@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { fileTypeFromFile } from 'file-type'; 
 import clamav from 'clamav.js';
+import { header, check, validationResult } from 'express-validator';
 
 import authMiddleware from '../middleware/authMiddleware.js';
 import { uploadLimiter } from '../middleware/rateLimiterMiddleware.js';
@@ -22,6 +23,29 @@ const router = express.Router();
 const UPLOAD_DIR = path.join(__dirname, '..', 'public', 'uploads', 'images');
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+
+// Validation error handler
+const validate = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    const errorMessages = errors.array().map(err => err.msg);
+    let flatErrorMessages = [];
+    errorMessages.forEach(msg => {
+      if (Array.isArray(msg)) {
+        flatErrorMessages = flatErrorMessages.concat(msg);
+      } else {
+        flatErrorMessages.push(msg);
+      }
+    });
+    logger.warn('Validation error in imageRoutes', {
+      errors: flatErrorMessages,
+      path: req.path,
+      userId: req.user?.id,
+    });
+    return next(new AppError(flatErrorMessages.join(', ') || 'Validation error', 400));
+  }
+  next();
+};
 
 const storage = multer.diskStorage({
   destination(req, file, cb) {
@@ -166,6 +190,22 @@ const processImageAndLog = async (filePath, originalName, userId) => {
   }
 };
 
+const imageUploadValidations = [
+  header('content-type')
+    .optional()
+    .custom((value) => {
+      if (value && !value.includes('multipart/form-data')) {
+        throw new Error('Invalid content type for file upload');
+      }
+      return true;
+    }),
+  
+  check().custom((value, { req }) => {
+    // This will be checked after multer processes the file
+    return true;
+  })
+];
+
 /**
  * @openapi
  * /images/upload:
@@ -238,6 +278,8 @@ router.post(
   '/upload',
   authMiddleware,
   uploadLimiter,
+  imageUploadValidations,
+  validate,
   upload.single('image'),
   catchAsync(async (req, res, next) => {
     const userId = req.user?.id || 'anonymous_upload_user';
