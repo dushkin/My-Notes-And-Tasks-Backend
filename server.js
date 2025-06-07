@@ -8,7 +8,7 @@ import {
     handleUncaughtException
 } from './middleware/errorHandlerMiddleware.js';
 
-handleUncaughtException(); // Set up global error handler for uncaught exceptions
+handleUncaughtException();
 
 import express from 'express';
 import cors from 'cors';
@@ -16,15 +16,13 @@ import mongoose from 'mongoose';
 import helmet from 'helmet';
 import mongoSanitize from 'express-mongo-sanitize';
 
-// Import xss-clean and try to get the function correctly
 import xssCleanModule from 'xss-clean';
 const xss = typeof xssCleanModule === 'function' ? xssCleanModule : xssCleanModule.default;
 
 import hpp from 'hpp';
 import compression from 'compression';
-import path from 'path'; // Added for robust path joining for static files
-import fs from 'fs'; // Added for directory creation
-import { fileURLToPath } from 'url'; // For __dirname in ESM
+import path, { dirname } from 'path'; // Correctly import dirname
+import { fileURLToPath } from 'url';
 
 import { generalLimiter } from './middleware/rateLimiterMiddleware.js';
 import logger from './config/logger.js';
@@ -34,7 +32,7 @@ import itemsRoutes from './routes/itemsRoutes.js';
 import imageRoutes from './routes/imageRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = dirname(__filename); // Now dirname is defined
 
 let isGracefullyClosing = false;
 const app = express();
@@ -53,22 +51,8 @@ const isTestEnv = process.env.NODE_ENV === 'test';
 const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!isTestEnv && !MONGODB_URI) {
-    logger.error('FATAL ERROR: MONGODB_URI is not defined. Exiting.'); // Changed to error
+    logger.error('FATAL ERROR: MONGODB_URI is not defined. Exiting.');
     process.exit(1);
-}
-
-// Ensure upload directories exist
-const uploadDir = path.join(__dirname, 'public', 'uploads', 'images');
-if (!fs.existsSync(uploadDir)) {
-    try {
-        fs.mkdirSync(uploadDir, { recursive: true });
-        logger.info('Upload directory created at startup', { path: uploadDir });
-    } catch (err) {
-        logger.error('Failed to create upload directory at startup', {
-            path: uploadDir,
-            error: err.message
-        });
-    }
 }
 
 if (!isTestEnv) {
@@ -76,7 +60,7 @@ if (!isTestEnv) {
     mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 30000 })
         .then(() => logger.info('Successfully connected to MongoDB.'))
         .catch((err) => {
-            logger.error('Initial MongoDB connection error. Exiting.', { message: err.message, stack: err.stack }); // Changed to error
+            logger.error('Initial MongoDB connection error. Exiting.', { message: err.message, stack: err.stack });
             process.exit(1);
         });
 
@@ -101,7 +85,6 @@ app.use(helmet({
             mediaSrc: ["'self'"],
             frameSrc: ["'none'"],
             objectSrc: ["'none'"],
-            // upgradeInsecureRequests is handled below
         }
     },
     crossOriginEmbedderPolicy: false
@@ -110,10 +93,8 @@ if (process.env.NODE_ENV === 'production' && app.get('helmet').contentSecurityPo
     app.get('helmet').contentSecurityPolicy.directives.upgradeInsecureRequests = [];
 }
 
-
 const allowedOriginsStr = process.env.ALLOWED_ORIGINS || '';
 const allowedOriginsList = allowedOriginsStr ? allowedOriginsStr.split(',').map(origin => origin.trim()) : '*';
-
 const corsOptions = {
     origin: (origin, callback) => {
         if (allowedOriginsList === '*' || !origin || allowedOriginsList.indexOf(origin) !== -1) {
@@ -168,9 +149,8 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(mongoSanitize());
 
-// Use xss-clean in the standard way. Ensure 'xss' is the actual middleware function.
 if (typeof xss === 'function') {
-    app.use(xss()); // This invokes xss-clean to return its middleware
+    app.use(xss());
 } else {
     logger.error('xss-clean module was not imported as a function. XSS middleware not applied.');
 }
@@ -186,13 +166,18 @@ logger.info('Static file serving configured for /uploads', { path: publicUploads
 try {
     logger.debug('Registering routes...');
     app.get('/api/health', (req, res) => {
-        res.status(200).json({
-            status: 'ok',
-            timestamp: new Date().toISOString(),
-            environment: process.env.NODE_ENV,
-            mongoState: mongoose.connection.readyState
-        });
+        if (process.env.NODE_ENV === 'test') {
+            logger.info('/api/health accessed in test mode, reporting UP.');
+            res.status(200).json({ status: 'UP', message: 'API is running (test mode - DB check bypassed for this endpoint).' });
+        } else if (mongoose.connection.readyState === 1) {
+            logger.info('/api/health accessed, DB connected, reporting UP.');
+            res.status(200).json({ status: 'UP', message: 'API is healthy, DB connected.' });
+        } else {
+            logger.warn('/api/health: API is up but DB is not connected or in unexpected state.', { dbState: mongoose.connection.readyState });
+            res.status(503).json({ status: 'DEGRADED', message: 'Database not ready.' });
+        }
     });
+
     app.use('/api/auth', authRoutes);
     logger.debug('authRoutes registered.');
     app.use('/api/items', itemsRoutes);
@@ -200,7 +185,7 @@ try {
     app.use('/api/images', imageRoutes);
     logger.debug('imageRoutes registered.');
 } catch (err) {
-    logger.error('Error registering routes:', { message: err.message, stack: err.stack }); // Changed to error
+    logger.error('Error registering routes:', { message: err.message, stack: err.stack });
     throw err;
 }
 
@@ -209,12 +194,36 @@ app.all('*', notFoundHandler);
 app.use(globalErrorHandler);
 
 let serverInstance;
-if (import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}` || (typeof require !== 'undefined' && require.main === module)) {
+const mainScriptPath = fileURLToPath(import.meta.url);
+const isMainModule = process.argv[1] === mainScriptPath || (typeof require !== 'undefined' && require.main === module && require.main.filename === mainScriptPath);
+
+
+if (isMainModule) {
     const PORT = process.env.PORT || 5001;
-    serverInstance = app.listen(PORT, () => {
-        logger.info(`Server running on port ${PORT}`, { environment: process.env.NODE_ENV });
-    });
-    handleUnhandledRejection(serverInstance);
+    const startServer = () => {
+        serverInstance = app.listen(PORT, () => {
+            logger.info(`Server running on port ${PORT} and ready to accept connections.`, { environment: process.env.NODE_ENV });
+        });
+        handleUnhandledRejection(serverInstance);
+    };
+
+    if (!isTestEnv && mongoose.connection.readyState !== 1) {
+        // If not in test env, and DB not yet connected, wait for connected event
+        logger.info("Server not started yet, waiting for MongoDB connection...");
+        mongoose.connection.once('open', () => {
+            logger.info("MongoDB connected (event 'open'), starting server.");
+            startServer();
+        });
+        // Also handle error during this wait, though initial connect has its own exit
+        mongoose.connection.once('error', (err) => {
+            logger.error("MongoDB connection error before server start, process will likely exit from connect .catch", { message: err.message });
+            // process.exit(1) // Already handled in initial connect .catch
+        });
+    } else {
+        // If test env (DB handled by Jest setup) or DB already connected
+        logger.info(isTestEnv ? "Test environment: Starting server immediately." : "MongoDB already connected or connection attempt in progress. Starting server.");
+        startServer();
+    }
 }
 
 const shutdown = async (signal) => {
@@ -224,11 +233,11 @@ const shutdown = async (signal) => {
         serverInstance.close(async () => {
             logger.info('HTTP server closed.');
             try {
-                if (mongoose.connection.readyState === 1) { // Only close if connected
+                if (mongoose.connection.readyState === 1) {
                     await mongoose.connection.close();
                     logger.info('MongoDB connection closed.');
                 } else {
-                    logger.info('MongoDB connection already closed or not established.');
+                    logger.info('MongoDB connection already closed or not established at shutdown.');
                 }
             } catch (err) {
                 logger.error('Error closing MongoDB connection during shutdown:', { message: err.message });
@@ -241,7 +250,7 @@ const shutdown = async (signal) => {
         logger.info('No active HTTP server to close. Exiting.');
         if (mongoose.connection.readyState === 1) {
             try { await mongoose.connection.close(); logger.info('MongoDB connection closed during direct exit.'); }
-            catch (e) { logger.error('Error closing MongoDB on direct exit.', { message: e.message });}
+            catch (e) { logger.error('Error closing MongoDB on direct exit.', { message: e.message }); }
         }
         process.exit(0);
     }
