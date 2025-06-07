@@ -384,17 +384,17 @@ if (process.env.NODE_ENV !== 'production') {
    *       '500':
    *         $ref: '#/components/responses/ServerError'
    */
-  router.delete('/test-cleanup', catchAsync(async (req, res, next) => {
-    const result = await User.deleteMany({
-      email: { $regex: /@e2e\.com$/, $options: 'i' }
-    });
-    logger.info(`[DEV/TEST] Test cleanup: deleted ${result.deletedCount} users from @e2e.com domain`);
-    res.status(200).json({
-      message: 'Test cleanup completed',
-      deletedUsers: result.deletedCount,
-      domain: 'e2e.com'
-    });
-  }));
+  router.delete(
+    '/test-cleanup',
+    catchAsync(async (req, res, next) => {
+      const result = await User.deleteMany({ email: /@e2e\.com$/ });
+      res.status(200).json({
+        success: true,
+        message: 'Test cleanup completed',
+        deletedUsers: result.deletedCount,
+      });
+    })
+  );
 }
 
 export default router;

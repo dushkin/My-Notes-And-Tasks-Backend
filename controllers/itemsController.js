@@ -250,6 +250,21 @@ export const deleteItem = catchAsync(async (req, res, next) => {
     res.status(200).json({ message: 'Item deleted successfully.' });
 });
 
+export const deleteTree = catchAsync(async (req, res, next) => {
+    const userId = req.user.id;
+    logger.info('Attempting to delete entire tree', { userId });
+    const user = await User.findById(userId);
+    if (!user) {
+        logger.warn('User not found for tree deletion', { userId });
+        return next(new AppError('User not found', 404));
+    }
+    user.notesTree = [];
+    user.markModified('notesTree');
+    await user.save();
+    logger.info('Entire tree deleted successfully', { userId });
+    res.status(200).json({ message: 'Tree deleted successfully' });
+});
+
 export const replaceUserTree = catchAsync(async (req, res, next) => {
     const userId = req.user.id;
     const { newTree } = req.body; // Validated by express-validator

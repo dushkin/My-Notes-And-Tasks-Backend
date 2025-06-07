@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.4.1",
-  "commitMessage": "Fixed Login issue",
+  "version": "3.4.2",
+  "commitMessage": "Minor changes",
   "description": "",
   "main": "server.js",
   "scripts": {
