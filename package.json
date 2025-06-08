@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.7.0",
-  "commitMessage": "Added moveItem endpoint",
+  "version": "3.8.0",
+  "commitMessage": "Support scheduled tasks (orphanedFileCleanupService, cleanupExpiredTokens) using cron",
   "description": "",
   "main": "server.js",
   "type": "module",
