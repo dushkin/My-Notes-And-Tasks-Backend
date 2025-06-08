@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.6.0",
-  "commitMessage": "Extended express-validator chains",
+  "version": "3.7.0",
+  "commitMessage": "Added moveItem endpoint",
   "description": "",
   "main": "server.js",
   "type": "module",

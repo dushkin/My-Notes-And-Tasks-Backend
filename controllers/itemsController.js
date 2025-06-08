@@ -289,3 +289,40 @@ export const replaceUserTree = catchAsync(async (req, res, next) => {
         notesTree: savedUser.notesTree || []
     });
 });
+
+export const moveItem = catchAsync(async (req, res, next) => {
+  const userId      = req.user.id;
+  const { newParentId, newIndex } = req.body;
+  const itemId      = req.params.id;
+
+  const user = await User.findById(userId);
+  if (!user) return next(new AppError('User not found', 404));
+
+  // 1. Remove from old parent
+  const { parent: oldParent, siblings: oldSiblings } = findParentAndSiblings(user.notesTree, itemId);
+  if (!oldSiblings) return next(new AppError('Item not found', 404));
+
+  const oldIdx = oldSiblings.findIndex(c => c.id === itemId);
+  const [item] = oldSiblings.splice(oldIdx, 1);
+  (oldParent || user).updatedAt = new Date().toISOString();
+
+  // 2. Insert into new parent (or root)
+  let targetChildren = user.notesTree;
+  let newParent      = null;
+  if (newParentId) {
+    newParent = findItemRecursive(user.notesTree, newParentId);
+    if (!newParent) return next(new AppError('New parent not found', 404));
+    if (!Array.isArray(newParent.children)) newParent.children = [];
+    targetChildren = newParent.children;
+  }
+
+  const idx = Number.isInteger(newIndex) ? newIndex : targetChildren.length;
+  targetChildren.splice(idx, 0, item);
+  (newParent || user).updatedAt = new Date().toISOString();
+
+  // 3. Update moved item timestamp
+  item.updatedAt = new Date().toISOString();
+
+  await user.save();
+  res.status(200).json({ status: 'success', data: { movedItem: item } });
+});
