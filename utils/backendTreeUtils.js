@@ -1,8 +1,6 @@
 // utils/backendTreeUtils.js
 import { v4 as uuidv4_imported } from 'uuid';
 
-// Re-export uuidv4 if it's intended to be part of this module's public API
-// and used by other modules importing from backendTreeUtils.js
 export const uuidv4 = uuidv4_imported;
 
 export function sortItems(items) {
@@ -34,6 +32,35 @@ export function findItemRecursive(nodes, itemId) {
     return null;
 }
 
+/**
+ * Finds the parent, siblings array, and index of an item.
+ * @param {Array} nodes - The array of nodes to search in.
+ * @param {string} itemId - The ID of the item to find.
+ * @param {object|null} parent - The parent of the current `nodes` array.
+ * @returns {{parent: object|null, siblings: Array|null, index: number}}
+ */
+export function findParentAndSiblings(nodes, itemId, parent = null) {
+    if (!Array.isArray(nodes)) {
+        return { parent: null, siblings: null, index: -1 };
+    }
+    for (let i = 0; i < nodes.length; i++) {
+        const item = nodes[i];
+        if (item.id === itemId) {
+            return { parent, siblings: nodes, index: i };
+        }
+        if (item.type === 'folder' && Array.isArray(item.children)) {
+            const found = findParentAndSiblings(item.children, itemId, item);
+            // If found in children, siblings will not be null
+            if (found.siblings) {
+                return found;
+            }
+        }
+    }
+    // Not found in this branch
+    return { parent: null, siblings: null, index: -1 };
+}
+
+
 export function deleteItemInTree(nodes, itemId) {
     if (!Array.isArray(nodes) || !itemId) return nodes; // Return original if not an array or no itemId
     let itemFoundAndDeleted = false;
@@ -45,18 +72,15 @@ export function deleteItemInTree(nodes, itemId) {
         return true;
     });
 
-    // If item was found and deleted at the current level, return the new array
     if (itemFoundAndDeleted) {
         return newNodes;
     }
 
-    // If not found at current level, recurse into children of folders
-    // and map to new array only if a child's structure changes
     let treeChangedInChildren = false;
     const processedNodes = nodes.map(item => {
         if (item.type === 'folder' && Array.isArray(item.children)) {
             const updatedChildren = deleteItemInTree(item.children, itemId);
-            if (updatedChildren !== item.children) { // Check if children array actually changed
+            if (updatedChildren !== item.children) {
                 treeChangedInChildren = true;
                 return { ...item, children: updatedChildren };
             }
@@ -64,7 +88,7 @@ export function deleteItemInTree(nodes, itemId) {
         return item;
     });
 
-    return treeChangedInChildren ? processedNodes : nodes; // Return original array if no changes in children
+    return treeChangedInChildren ? processedNodes : nodes;
 }
 
 
@@ -112,25 +136,25 @@ export function updateItemInTree(nodes, itemId, updates) {
                 allowedUpdates.updatedAt = new Date().toISOString(); // Update timestamp
                 return { ...item, ...allowedUpdates };
             }
-            return item; // No valid updates for this item
+            return item;
         }
         if (item.type === 'folder' && Array.isArray(item.children)) {
             const updatedChildren = updateItemInTree(item.children, itemId, updates);
-            if (updatedChildren !== item.children) { // Check if children array actually changed
+            if (updatedChildren !== item.children) {
                 treeModified = true;
                 return { ...item, children: updatedChildren };
             }
         }
         return item;
     });
-    return treeModified ? newNodes : nodes; // Return original array if no changes
+    return treeModified ? newNodes : newNodes;
 }
 
 
 export function hasSiblingWithName(siblings, nameToCheck, excludeId = null) {
     if (!Array.isArray(siblings) || !nameToCheck) return false;
     const normalizedName = nameToCheck.trim().toLowerCase();
-    if (!normalizedName) return false; // Empty name after trim doesn't conflict
+    if (!normalizedName) return false;
     return siblings.some(sibling =>
         sibling &&
         sibling.id !== excludeId &&
@@ -143,10 +167,9 @@ export function ensureServerSideIdsAndStructure(item) {
     const newItem = { ...item };
     const now = new Date().toISOString();
 
-    // Ensure ID exists and is a valid server-side ID (UUID) or generate one
     newItem.id = newItem.id && typeof newItem.id === 'string' &&
-                 !newItem.id.startsWith('client-') && !newItem.id.startsWith('temp-') // Basic check for client-side IDs
-                 ? newItem.id : uuidv4_imported(); // Use the imported uuid
+                 !newItem.id.startsWith('client-') && !newItem.id.startsWith('temp-')
+                 ? newItem.id : uuidv4_imported();
 
     newItem.label = (typeof newItem.label === 'string' && newItem.label.trim())
         ? newItem.label.trim()
@@ -157,7 +180,6 @@ export function ensureServerSideIdsAndStructure(item) {
         newItem.type = (Array.isArray(newItem.children) && newItem.children.length > 0) ? 'folder' : 'note';
     }
 
-    // Ensure timestamps are valid ISO strings or set them
     try {
         if (!newItem.createdAt || new Date(newItem.createdAt).toISOString() !== newItem.createdAt) {
             newItem.createdAt = now;
@@ -165,25 +187,25 @@ export function ensureServerSideIdsAndStructure(item) {
     } catch (e) {
         newItem.createdAt = now;
     }
-    newItem.updatedAt = now; // Always set/update updatedAt on server processing
+    newItem.updatedAt = now;
 
     if (newItem.type === 'folder') {
         newItem.children = Array.isArray(newItem.children)
-            ? newItem.children.map(child => ensureServerSideIdsAndStructure(child)) // Recurse
+            ? newItem.children.map(child => ensureServerSideIdsAndStructure(child))
             : [];
-        delete newItem.content; // Folders don't have content/completed/direction
+        delete newItem.content;
         delete newItem.completed;
         delete newItem.direction;
     } else if (newItem.type === 'note') {
         newItem.content = (typeof newItem.content === 'string') ? newItem.content : "";
         newItem.direction = (newItem.direction === 'rtl' || newItem.direction === 'ltr') ? newItem.direction : 'ltr';
-        delete newItem.children; // Notes don't have children/completed
+        delete newItem.children;
         delete newItem.completed;
     } else if (newItem.type === 'task') {
         newItem.content = (typeof newItem.content === 'string') ? newItem.content : "";
         newItem.completed = typeof newItem.completed === 'boolean' ? newItem.completed : false;
         newItem.direction = (newItem.direction === 'rtl' || newItem.direction === 'ltr') ? newItem.direction : 'ltr';
-        delete newItem.children; // Tasks don't have children
+        delete newItem.children;
     }
     return newItem;
 }
