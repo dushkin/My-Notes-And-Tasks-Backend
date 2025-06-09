@@ -1,4 +1,4 @@
-// src/routes/itemsRoutes.jsx
+// src/routes/itemsRoutes.js
 import express from 'express';
 import { body, param, validationResult } from 'express-validator';
 import {
@@ -41,9 +41,9 @@ router.get('/', getNotesTree);
 
 // Get a single item
 router.get(
-  '/:id',
+  '/:itemId', // Use a more specific name like itemId
   [
-    param('id').isMongoId().withMessage('Invalid item ID'),
+    param('itemId').isString().withMessage('Item ID must be a string.'),
     validate,
   ],
   getItem
@@ -54,11 +54,11 @@ router.post(
   '/',
   createItemLimiter,
   [
-    body('label').notEmpty().withMessage('Label is required'),
+    body('label').notEmpty().withMessage('Label is required').trim(),
     body('type')
-      .isIn(['note', 'folder'])
-      .withMessage('Type must be "note" or "folder"'),
-    body('parentId').optional().isMongoId().withMessage('Invalid parent ID'),
+      .isIn(['note', 'folder', 'task'])
+      .withMessage('Type must be "note", "folder", or "task"'),
+    body('parentId').optional({ checkFalsy: true }).isString().withMessage('Invalid parent ID format'),
     validate,
   ],
   createItem
@@ -66,11 +66,12 @@ router.post(
 
 // Update an item
 router.patch(
-  '/:id',
+  '/:itemId',
   [
-    param('id').isMongoId().withMessage('Invalid item ID'),
-    body('label').optional().isString(),
+    param('itemId').isString().withMessage('Item ID must be a string.'),
+    body('label').optional().isString().trim(),
     body('content').optional().isString(),
+    body('completed').optional().isBoolean(),
     body('direction')
       .optional()
       .isIn(['ltr', 'rtl'])
@@ -82,48 +83,54 @@ router.patch(
 
 // Delete an item
 router.delete(
-  '/:id',
+  '/:itemId',
   [
-    param('id').isMongoId().withMessage('Invalid item ID'),
+    // Corrected Validation: Check if it's a non-empty string, not a MongoID.
+    param('itemId').isString().notEmpty().withMessage('Invalid item ID format.'),
     validate,
   ],
   deleteItem
 );
 
+
 // Test-only: clear entire tree
-router.delete(
-  '/',
-  catchAsync(async (req, res, next) => {
-    const userId = req.user.id;
-    logger.info(`[TEST-CLEANUP] DELETE / - clearing tree for user: ${userId}`);
-    const user = await User.findById(userId);
-    if (!user) {
-      logger.warn(`[TEST-CLEANUP] User not found: ${userId}`);
-      return next(new AppError('User not found', 404));
-    }
-    const countItemsRecursively = (items) => {
-      if (!Array.isArray(items)) return 0;
-      let count = items.length;
-      for (const item of items) {
-        if (item.children && Array.isArray(item.children)) {
-          count += countItemsRecursively(item.children);
+if (process.env.NODE_ENV !== 'production') {
+    router.delete(
+    '/',
+    catchAsync(async (req, res, next) => {
+        const userId = req.user.id;
+        logger.info(`[TEST-CLEANUP] DELETE / - clearing tree for user: ${userId}`);
+        const user = await User.findById(userId);
+        if (!user) {
+        logger.warn(`[TEST-CLEANUP] User not found: ${userId}`);
+        return next(new AppError('User not found', 404));
         }
-      }
-      return count;
-    };
-    const itemsDeleted = countItemsRecursively(user.notesTree || []);
-    user.notesTree = [];
-    await user.save();
-    logger.info(`[TEST-CLEANUP] Tree cleared, removed ${itemsDeleted} items for user: ${userId}`);
-    res.status(200).json({ status: 'success', deleted: itemsDeleted });
-  })
-);
+        const countItemsRecursively = (items) => {
+        if (!Array.isArray(items)) return 0;
+        let count = items.length;
+        for (const item of items) {
+            if (item.children && Array.isArray(item.children)) {
+            count += countItemsRecursively(item.children);
+            }
+        }
+        return count;
+        };
+        const itemsDeleted = countItemsRecursively(user.notesTree || []);
+        user.notesTree = [];
+        user.markModified('notesTree');
+        await user.save();
+        logger.info(`[TEST-CLEANUP] Tree cleared, removed ${itemsDeleted} items for user: ${userId}`);
+        res.status(200).json({ status: 'success', deleted: itemsDeleted });
+    })
+    );
+}
+
 
 // Replace entire tree
 router.put(
-  '/',
+  '/tree', // Changed to a more specific endpoint
   [
-    body('tree').isArray().withMessage('Tree must be an array'),
+    body('newTree').isArray().withMessage('newTree must be an array'),
     validate,
   ],
   replaceUserTree
@@ -131,10 +138,10 @@ router.put(
 
 // Move an item
 router.patch(
-  '/:id/move',
+  '/:itemId/move',
   [
-    param('id').isMongoId().withMessage('Invalid item ID'),
-    body('newParentId').optional().isMongoId().withMessage('Invalid parent ID'),
+    param('itemId').isString().notEmpty().withMessage('Item ID must be a non-empty string.'),
+    body('newParentId').optional({ checkFalsy: true }).isString().withMessage('Invalid newParentId format.'),
     body('newIndex')
       .optional()
       .isInt({ min: 0 })

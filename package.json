@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.8.0",
-  "commitMessage": "Support scheduled tasks (orphanedFileCleanupService, cleanupExpiredTokens) using cron",
+  "version": "3.8.1",
+  "commitMessage": "Fixed delete bug",
   "description": "",
   "main": "server.js",
   "type": "module",
