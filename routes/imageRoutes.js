@@ -1,4 +1,3 @@
-// routes/imageRoutes.js
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -7,7 +6,6 @@ import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { fileTypeFromFile } from 'file-type'; 
-import clamav from 'clamav.js';
 import { header, check, validationResult } from 'express-validator';
 
 import authMiddleware from '../middleware/authMiddleware.js';
@@ -23,6 +21,15 @@ const router = express.Router();
 const UPLOAD_DIR = path.join(__dirname, '..', 'public', 'uploads', 'images');
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+
+// Simplified security approach - no ClamAV to avoid false positives
+// We'll rely on file type validation, size limits, and basic content checks
+logger.info('Image upload security configuration', {
+  securityApproach: 'simplified',
+  clamavEnabled: false,
+  environment: process.env.NODE_ENV,
+  note: 'ClamAV disabled to prevent false positives'
+});
 
 // Validation error handler
 const validate = (req, res, next) => {
@@ -82,85 +89,75 @@ const fileFilter = (req, file, cb) => {
 };
 
 const scanFile = async (filePath) => {
-  logger.debug('Scanning file (advanced)', { filePath });
+  logger.debug('Starting simplified file security scan', { filePath });
+  
   try {
-  // 1. Signature sniffing using file-type
-  const ft = await fileTypeFromFile(filePath);            // ? use named import
-  if (!ft || !ALLOWED_MIME_TYPES.includes(ft.mime)) {
-    logger.warn('Upload rejected: content type mismatch', { filePath, detectedMime: ft?.mime });
-    throw new AppError('Invalid file content type. Only JPEG, PNG, GIF, and WebP are allowed.', 400);
-  }
-
-  // 2. Antivirus scan with ClamAV
-  await new Promise((resolve, reject) => {
-    const scanner = clamav.createScanner();
-    scanner.scanFile(filePath, (err, good) => {
-      if (err) return reject(err);
-      resolve(good);
-    });
-  }).then(() => {
-    logger.info('ClamAV scan passed', { filePath });
-  }).catch(err => {
-    logger.error('ClamAV detected malicious file or scan error', { filePath, error: err.message });
-    throw new AppError('Malicious file detected', 400);
-  });
-
-  // 3. Legacy magic-byte & pattern checks
-  const buffer = fs.readFileSync(filePath);
-  const jpegHeader = buffer.slice(0, 3).toString('hex') === 'ffd8ff';
-  const pngHeader  = buffer.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
-  const gifHeader  = ['GIF87a','GIF89a'].includes(buffer.slice(0,6).toString('ascii'));
-  const webpHeader = buffer.slice(0,4).toString('ascii') === 'RIFF' && buffer.slice(8,12).toString('ascii') === 'WEBP';
-  const ext = path.extname(filePath).toLowerCase();
-  let valid = false;
-  if ((ext === '.jpg' || ext === '.jpeg') && jpegHeader) valid = true;
-  else if (ext === '.png' && pngHeader) valid = true;
-  else if (ext === '.gif' && gifHeader) valid = true;
-  else if (ext === '.webp' && webpHeader) valid = true;
-  if (!valid) {
-    logger.warn('Magic-byte check failed', { filePath, ext });
-    throw new AppError(`Invalid ${ext.substring(1).toUpperCase()} file based on content.`, 400);
-  }
-  const suspicious = ['<script','<?php','<%','javascript:','vbscript:','onload=','onerror='];
-  const head = buffer.toString('ascii', 0, Math.min(buffer.length,1024)).toLowerCase();
-  for (const pat of suspicious) {
-    if (head.includes(pat)) {
-      logger.warn('Suspicious pattern detected', { filePath, pattern: pat });
-      throw new AppError('Suspicious content detected in file', 400);
+    // 1. File type validation using file-type library
+    const ft = await fileTypeFromFile(filePath);
+    if (!ft || !ALLOWED_MIME_TYPES.includes(ft.mime)) {
+      logger.warn('Upload rejected: content type mismatch', { filePath, detectedMime: ft?.mime });
+      throw new AppError('Invalid file content type. Only JPEG, PNG, GIF, and WebP are allowed.', 400);
     }
-  }
+    logger.debug('File type validation passed', { detectedMime: ft.mime });
 
+    // 2. Basic magic byte validation
+    const buffer = fs.readFileSync(filePath);
+    const jpegHeader = buffer.slice(0, 3).toString('hex') === 'ffd8ff';
+    const pngHeader  = buffer.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
+    const gifHeader  = ['GIF87a','GIF89a'].includes(buffer.slice(0,6).toString('ascii'));
+    const webpHeader = buffer.slice(0,4).toString('ascii') === 'RIFF' && buffer.slice(8,12).toString('ascii') === 'WEBP';
+    const ext = path.extname(filePath).toLowerCase();
+    
+    let valid = false;
+    if ((ext === '.jpg' || ext === '.jpeg') && jpegHeader) valid = true;
+    else if (ext === '.png' && pngHeader) valid = true;
+    else if (ext === '.gif' && gifHeader) valid = true;
+    else if (ext === '.webp' && webpHeader) valid = true;
+    
+    if (!valid) {
+      logger.warn('Magic-byte check failed', { filePath, ext });
+      throw new AppError(`Invalid ${ext.substring(1).toUpperCase()} file based on content.`, 400);
+    }
+
+    // 3. Basic suspicious content check (only extremely obvious patterns)
+    const head = buffer.toString('ascii', 0, Math.min(buffer.length, 512)).toLowerCase();
+    const obviousMalware = ['<script>', '<?php', 'javascript:', 'vbscript:'];
+    for (const pattern of obviousMalware) {
+      if (head.includes(pattern)) {
+        logger.warn('Obviously suspicious pattern detected', { filePath, pattern });
+        throw new AppError('File contains suspicious executable content', 400);
+      }
+    }
+
+    logger.debug('File security validation passed', { filePath });
     return true;
+
   } catch (error) {
     logger.error('File scan exception', { filePath, message: error.message });
     if (error instanceof AppError) throw error;
-    throw new AppError(`File scan failed: ${error.message}`, 400);
+    throw new AppError(`File validation failed: ${error.message}`, 400);
   }
 };
-
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024, files: 1 }
-});
 
 const processImageAndLog = async (filePath, originalName, userId) => {
   logger.debug('Starting image processing', { userId, filePath, originalName });
   try {
+    // Perform simplified security scanning
     await scanFile(filePath);
 
+    // Process image with Sharp
     const image = sharp(filePath);
     const metadata = await image.metadata();
     if (metadata.width > 10000 || metadata.height > 10000) {
       logger.warn('Image dimensions too large', { userId, originalName, width: metadata.width, height: metadata.height });
-      throw new AppError('Image dimensions exceed allowed maximum', 400);
+      throw new AppError('Image dimensions exceed allowed maximum (10000x10000)', 400);
     }
 
-    // 2. Re-encode & strip all metadata
+    // Re-encode & strip metadata for security and consistency
     const processedBuffer = await image
-      .rotate()
+      .rotate() // Auto-rotate based on EXIF
       .toFormat(metadata.format)
-      .withMetadata(false)
+      .withMetadata(false) // Strip all metadata including EXIF
       .toBuffer();
 
     fs.writeFileSync(filePath, processedBuffer);
@@ -171,7 +168,8 @@ const processImageAndLog = async (filePath, originalName, userId) => {
       newSize: processedBuffer.length,
       format: metadata.format,
       originalWidth: metadata.width,
-      originalHeight: metadata.height
+      originalHeight: metadata.height,
+      securityApproach: 'simplified'
     });
 
     return {
@@ -183,12 +181,18 @@ const processImageAndLog = async (filePath, originalName, userId) => {
   } catch (err) {
     logger.error('Image processing exception', { userId, originalName, filePath, message: err.message });
     if (fs.existsSync(filePath)) {
-      try { fs.unlinkSync(filePath); } catch {/* ignore */}
+      try { fs.unlinkSync(filePath); } catch {/* ignore cleanup errors */}
     }
     if (err instanceof AppError) throw err;
     throw new AppError(`Image processing failed: ${err.message}`, 500);
   }
 };
+
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 }
+});
 
 const imageUploadValidations = [
   header('content-type')

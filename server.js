@@ -25,6 +25,9 @@ import path, { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 import { generalLimiter } from './middleware/rateLimiterMiddleware.js';
+
+import imageCorsMiddleware from './middleware/imageCorsMiddleware.js';
+
 import logger from './config/logger.js';
 
 // Import scheduled tasks service
@@ -36,17 +39,17 @@ import imageRoutes from './routes/imageRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 
 process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION DETAILS:');
-  console.error('Error name:', err.name);
-  console.error('Error message:', err.message);
-  console.error('Error stack:', err.stack);
-  process.exit(1);
+    console.error('UNCAUGHT EXCEPTION DETAILS:');
+    console.error('Error name:', err.name);
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    process.exit(1);
 });
 
 process.on('unhandledRejection', (err) => {
-  console.error('UNHANDLED REJECTION DETAILS:');
-  console.error('Error:', err);
-  process.exit(1);
+    console.error('UNHANDLED REJECTION DETAILS:');
+    console.error('Error:', err);
+    process.exit(1);
 });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -108,7 +111,7 @@ if (!isTestEnv) {
 function initializeScheduledTasks() {
     // Check if scheduled tasks are enabled (default: true)
     const enableScheduledTasks = process.env.ENABLE_SCHEDULED_TASKS !== 'false';
-    
+
     if (!enableScheduledTasks) {
         logger.info('Scheduled tasks disabled via ENABLE_SCHEDULED_TASKS environment variable');
         return;
@@ -134,15 +137,18 @@ function initializeScheduledTasks() {
 
 // --- Apply tightened HTTP headers early ---------------------------------------
 app.use(helmet({
-  contentSecurityPolicy: false,  // Disable CSP for now
-  crossOriginEmbedderPolicy: false
+    contentSecurityPolicy: false,  // Disable CSP for now
+    crossOriginEmbedderPolicy: false
 }));
 
 const allowedOriginsStr = process.env.ALLOWED_ORIGINS || '';
 const allowedOriginsList = allowedOriginsStr ? allowedOriginsStr.split(',').map(origin => origin.trim()) : '*';
 const corsOptions = {
     origin: (origin, callback) => {
-        if (allowedOriginsList === '*' || !origin || allowedOriginsList.indexOf(origin) !== -1) {
+        // Allow requests with no origin (like mobile apps, curl, or direct URL access)
+        if (!origin) return callback(null, true);
+
+        if (allowedOriginsList === '*' || allowedOriginsList.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
             logger.warn('CORS: Origin not allowed', { origin, allowedOriginsList });
@@ -152,7 +158,8 @@ const corsOptions = {
     credentials: true,
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+    exposedHeaders: ['Content-Length', 'Content-Type'],
 };
 app.use(cors(corsOptions));
 logger.info('CORS middleware initialized', { configuredOrigins: allowedOriginsList === '*' ? 'All (*)' : allowedOriginsList });
@@ -205,8 +212,27 @@ app.use(compression());
 app.use('/api/', generalLimiter);
 
 const publicUploadsPath = path.join(__dirname, 'public', 'uploads');
-app.use('/uploads', express.static(publicUploadsPath));
-logger.info('Static file serving configured for /uploads', { path: publicUploadsPath });
+
+app.use('/uploads', imageCorsMiddleware);
+
+// Serve static files
+app.use('/uploads', express.static(publicUploadsPath, {
+    maxAge: '1y', // Cache for 1 year
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, path) => {
+        // Additional headers for image files
+        if (path.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+            res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+        }
+    }
+}));
+
+logger.info('Static file serving configured for /uploads', {
+    path: publicUploadsPath,
+    corsEnabled: true
+});
 
 try {
     logger.debug('Registering routes...');
@@ -216,8 +242,8 @@ try {
             res.status(200).json({ status: 'UP', message: 'API is running (test mode - DB check bypassed for this endpoint).' });
         } else if (mongoose.connection.readyState === 1) {
             logger.info('/api/health accessed, DB connected, reporting UP.');
-            res.status(200).json({ 
-                status: 'UP', 
+            res.status(200).json({
+                status: 'UP',
                 message: 'API is healthy, DB connected.',
                 scheduledTasks: {
                     enabled: process.env.ENABLE_SCHEDULED_TASKS !== 'false',
@@ -236,7 +262,7 @@ try {
     logger.debug('itemsRoutes registered.');
     app.use('/api/images', imageRoutes);
     logger.debug('imageRoutes registered.');
-    
+
     // Register admin routes (optional - only if you want admin functionality)
     if (process.env.ENABLE_ADMIN_ROUTES !== 'false') {
         app.use('/api/admin', adminRoutes);
@@ -288,17 +314,17 @@ if (isMainModule) {
 const shutdown = async (signal) => {
     isGracefullyClosing = true;
     logger.info(`Received ${signal}. Shutting down gracefully...`);
-    
+
     // Shutdown scheduled tasks service first
     try {
         await scheduledTasksService.shutdown();
     } catch (error) {
-        logger.error('Error shutting down scheduled tasks service:', { 
-            message: error.message, 
-            stack: error.stack 
+        logger.error('Error shutting down scheduled tasks service:', {
+            message: error.message,
+            stack: error.stack
         });
     }
-    
+
     if (serverInstance) {
         serverInstance.close(async () => {
             logger.info('HTTP server closed.');
@@ -319,11 +345,11 @@ const shutdown = async (signal) => {
     } else {
         logger.info('No active HTTP server to close. Exiting.');
         if (mongoose.connection.readyState === 1) {
-            try { 
-                await mongoose.connection.close(); 
-                logger.info('MongoDB connection closed during direct exit.'); 
-            } catch (e) { 
-                logger.error('Error closing MongoDB on direct exit.', { message: e.message }); 
+            try {
+                await mongoose.connection.close();
+                logger.info('MongoDB connection closed during direct exit.');
+            } catch (e) {
+                logger.error('Error closing MongoDB on direct exit.', { message: e.message });
             }
         }
         process.exit(0);
