@@ -41,7 +41,7 @@ router.get('/', getNotesTree);
 
 // Get a single item
 router.get(
-  '/:itemId', // Use a more specific name like itemId
+  '/:itemId',
   [
     param('itemId').isString().withMessage('Item ID must be a string.'),
     validate,
@@ -49,7 +49,7 @@ router.get(
   getItem
 );
 
-// Create a new item
+// Create a new root-level item
 router.post(
   '/',
   createItemLimiter,
@@ -58,7 +58,21 @@ router.post(
     body('type')
       .isIn(['note', 'folder', 'task'])
       .withMessage('Type must be "note", "folder", or "task"'),
-    body('parentId').optional({ checkFalsy: true }).isString().withMessage('Invalid parent ID format'),
+    validate,
+  ],
+  createItem
+);
+
+// Create a child item under a specific parent
+router.post(
+  '/:parentId',
+  createItemLimiter,
+  [
+    param('parentId').isString().notEmpty().withMessage('Parent ID must be a non-empty string.'),
+    body('label').notEmpty().withMessage('Label is required').trim(),
+    body('type')
+      .isIn(['note', 'folder', 'task'])
+      .withMessage('Type must be "note", "folder", or "task"'),
     validate,
   ],
   createItem
@@ -85,13 +99,11 @@ router.patch(
 router.delete(
   '/:itemId',
   [
-    // Corrected Validation: Check if it's a non-empty string, not a MongoID.
     param('itemId').isString().notEmpty().withMessage('Invalid item ID format.'),
     validate,
   ],
   deleteItem
 );
-
 
 // Test-only: clear entire tree
 if (process.env.NODE_ENV !== 'production') {
@@ -125,10 +137,9 @@ if (process.env.NODE_ENV !== 'production') {
     );
 }
 
-
 // Replace entire tree
 router.put(
-  '/tree', // Changed to a more specific endpoint
+  '/tree',
   [
     body('newTree').isArray().withMessage('newTree must be an array'),
     validate,
