@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.8.3",
-  "commitMessage": "Fixed add child folder bug",
+  "version": "3.9.0",
+  "commitMessage": "Added characters restrictions",
   "description": "",
   "main": "server.js",
   "type": "module",

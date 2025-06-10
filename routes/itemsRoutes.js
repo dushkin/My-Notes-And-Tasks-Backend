@@ -13,6 +13,7 @@ import {
 import authMiddleware from '../middleware/authMiddleware.js';
 import { createItemLimiter } from '../middleware/rateLimiterMiddleware.js';
 import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
+import { validateItemNameMiddleware } from '../utils/itemNameValidation.js'; // Add this import
 import User from '../models/User.js';
 import logger from '../config/logger.js';
 
@@ -54,12 +55,18 @@ router.post(
   '/',
   createItemLimiter,
   [
-    body('label').notEmpty().withMessage('Label is required').trim(),
+    body('label')
+      .notEmpty()
+      .withMessage('Label is required')
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage('Label cannot exceed 255 characters'),
     body('type')
       .isIn(['note', 'folder', 'task'])
       .withMessage('Type must be "note", "folder", or "task"'),
     validate,
   ],
+  validateItemNameMiddleware, // Add validation middleware here
   createItem
 );
 
@@ -69,12 +76,18 @@ router.post(
   createItemLimiter,
   [
     param('parentId').isString().notEmpty().withMessage('Parent ID must be a non-empty string.'),
-    body('label').notEmpty().withMessage('Label is required').trim(),
+    body('label')
+      .notEmpty()
+      .withMessage('Label is required')
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage('Label cannot exceed 255 characters'),
     body('type')
       .isIn(['note', 'folder', 'task'])
       .withMessage('Type must be "note", "folder", or "task"'),
     validate,
   ],
+  validateItemNameMiddleware, // Add validation middleware here
   createItem
 );
 
@@ -83,7 +96,12 @@ router.patch(
   '/:itemId',
   [
     param('itemId').isString().withMessage('Item ID must be a string.'),
-    body('label').optional().isString().trim(),
+    body('label')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage('Label cannot exceed 255 characters'),
     body('content').optional().isString(),
     body('completed').optional().isBoolean(),
     body('direction')
@@ -92,6 +110,7 @@ router.patch(
       .withMessage('Direction must be "ltr" or "rtl"'),
     validate,
   ],
+  validateItemNameMiddleware, // Add validation middleware here
   updateItem
 );
 
