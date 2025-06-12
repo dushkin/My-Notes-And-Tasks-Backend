@@ -77,7 +77,7 @@ export const createItem = catchAsync(async (req, res, next) => {
     const userId = req.user.id;
     const { label, type, content, completed } = req.body;
     const parentId = req.params.parentId || null;
-    const trimmedLabel = label; // Already trimmed by validator
+    const trimmedLabel = label; // Allows special characters like '"? and ... // Already trimmed by validator
 
     logger.info('Attempting to create item', { userId, type, label: trimmedLabel, parentId });
 
@@ -175,7 +175,7 @@ export const updateItem = catchAsync(async (req, res, next) => {
     const { item: originalItem, parentArray: originalSiblings } = originalItemSearchResult;
 
     if (updates.hasOwnProperty('label') && typeof updates.label === 'string') {
-        const trimmedNewLabel = updates.label.trim();
+        const trimmedNewLabel = updates.label.trim(); // Allows special characters like '"? and ...
         if (trimmedNewLabel !== originalItem.label && hasSiblingWithName(originalSiblings || [], trimmedNewLabel, itemId)) {
             logger.warn('Item name conflict during update', { userId, itemId, newLabel: trimmedNewLabel });
             return next(new AppError(`An item named "${trimmedNewLabel}" already exists in this location`, 400));

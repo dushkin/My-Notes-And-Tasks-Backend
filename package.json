@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "3.9.1",
-  "commitMessage": "Fixed image related bug",
+  "version": "3.10.0",
+  "commitMessage": "Extended allowd labals characters set",
   "description": "",
   "main": "server.js",
   "type": "module",
