@@ -1,6 +1,6 @@
 // models/User.js
 import mongoose from 'mongoose'; // Changed from require
-const Schema = mongoose.Schema; // [cite: 173, 184]
+const Schema = mongoose.Schema; // [cite: your original refs]
 
 const userSchema = new Schema({
     email: {
@@ -10,27 +10,37 @@ const userSchema = new Schema({
         lowercase: true,
         trim: true,
         match: [/\S+@\S+\.\S+/, 'Please use a valid email address'],
-        index: true, // [cite: 174, 185]
+        index: true // [cite: your original refs]
     },
     password: {
         type: String,
         required: [true, 'Password is required'],
-        minlength: [8, 'Password must be at least 8 characters long'],
+        minlength: [8, 'Password must be at least 8 characters long']
+    },
+    role: {
+        type: String,
+        enum: ['user', 'admin'],
+        default: 'user'
+    },
+    isVerified: {
+        type: Boolean,
+        default: false
     },
     notesTree: {
         type: Schema.Types.Mixed,
-        default: [], // [cite: 175, 186]
+        default: [] // [cite: your original ref]
     },
     createdAt: {
         type: Date,
-        default: Date.now,
+        default: Date.now
     },
     updatedAt: {
         type: Date,
-        default: Date.now,
-    },
+        default: Date.now
+    }
 });
 
+// Preserve your original timestamp hook
 userSchema.pre('save', function (next) {
     if (this.isModified()) {
         this.updatedAt = Date.now();
@@ -39,10 +49,9 @@ userSchema.pre('save', function (next) {
 });
 
 userSchema.methods.toJSON = function () {
-    var obj = this.toObject(); // [cite: 177, 188]
-    delete obj.password; // [cite: 178, 189]
-    return obj; // [cite: 178, 189]
+    const obj = this.toObject();
+    delete obj.password;
+    return obj;
 };
 
-// Changed from module.exports
 export default mongoose.model('User', userSchema);
