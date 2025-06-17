@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "4.0.0",
-  "commitMessage": "Set a CC BY-ND 4.0 license",
+  "version": "4.1.0",
+  "commitMessage": "Updated landing page. Added readme and contributing files",
   "description": "",
   "main": "server.js",
   "type": "module",
