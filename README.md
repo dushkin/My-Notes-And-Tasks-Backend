@@ -1,6 +1,6 @@
 # Notes & Tasks - Backend API
 
-This repository contains the source code for the backend REST API that powers the [Notes & Tasks application](https://github.com/your-username/your-frontend-repo). It is a secure, robust, and scalable service built with Node.js, Express, and MongoDB.
+This repository contains the source code for the backend REST API that powers the [Notes & Tasks application](https://github.com/dushkin/My-Notes-And-Tasks-Backend). It is a secure, robust, and scalable service built with Node.js, Express, and MongoDB.
 
 **[View API Documentation](http://localhost:5001/api-docs)** (while running locally)
 

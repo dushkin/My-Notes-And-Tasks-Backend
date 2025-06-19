@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "4.1.0",
-  "commitMessage": "Updated landing page. Added readme and contributing files",
+  "version": "4.1.",
+  "commitMessage": "Updated urls",
   "description": "",
   "main": "server.js",
   "type": "module",

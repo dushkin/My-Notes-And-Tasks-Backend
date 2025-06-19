@@ -6,8 +6,8 @@ Thank you for your interest in contributing! Your help is appreciated. Whether y
 
 ### Reporting Bugs
 
-- Please check the existing [Issues](https://github.com/your-username/your-repo/issues) to see if your bug has already been reported.
-- If it hasn't, please [open a new issue](https://github.com/your-username/your-repo/issues/new). Be sure to include a clear title, a detailed description of the problem, steps to reproduce it, and what you expected to happen.
+- Please check the existing [Issues](https://github.com/dushkin/My-Notes-and-Tasks/issues) to see if your bug has already been reported.
+- If it hasn't, please [open a new issue](https://github.com/dushkin/My-Notes-and-Tasks/issues/new). Be sure to include a clear title, a detailed description of the problem, steps to reproduce it, and what you expected to happen.
 
 ### Suggesting Enhancements
 
