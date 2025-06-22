@@ -1,4 +1,3 @@
-// routes/authRoutes.js
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import {
@@ -40,6 +39,56 @@ const validate = (req, res, next) => {
   next();
 };
 
+// Beta limit check middleware
+const checkBetaUserLimit = catchAsync(async (req, res, next) => {
+  // Check if beta limiting is enabled
+  const betaEnabled = process.env.BETA_ENABLED === 'true';
+  
+  if (!betaEnabled) {
+    // Beta limiting is disabled, proceed normally
+    return next();
+  }
+
+  const betaLimit = parseInt(process.env.BETA_USER_LIMIT || '50', 10);
+  const currentUserCount = await User.countDocuments();
+
+  logger.info('Beta limit check during registration', {
+    betaEnabled,
+    betaLimit,
+    currentUserCount,
+    email: req.body?.email,
+    ip: req.ip
+  });
+
+  if (currentUserCount >= betaLimit) {
+    logger.warn('Registration blocked: Beta user limit reached', {
+      currentUserCount,
+      betaLimit,
+      attemptedEmail: req.body?.email,
+      ip: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+
+    return next(new AppError(
+      `Registration is temporarily disabled. Beta user limit of ${betaLimit} users has been reached. Please try again later.`,
+      403
+    ));
+  }
+
+  // Check if we're very close to the limit (within 1 user) to handle race conditions
+  if (currentUserCount >= betaLimit - 1) {
+    logger.warn('Registration attempted near beta limit', {
+      currentUserCount,
+      betaLimit,
+      remainingSlots: betaLimit - currentUserCount,
+      email: req.body?.email,
+      ip: req.ip
+    });
+  }
+
+  next();
+});
+
 /**
  * @openapi
  * /auth/register:
@@ -47,7 +96,7 @@ const validate = (req, res, next) => {
  *     tags:
  *       - Auth
  *     summary: Register a new user
- *     description: Creates a new user account with the provided email and password.
+ *     description: Creates a new user account with the provided email and password. Registration may be limited during beta period.
  *     requestBody:
  *       required: true
  *       content:
@@ -67,6 +116,16 @@ const validate = (req, res, next) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       '403':
+ *         description: Registration blocked due to beta user limit.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Registration is temporarily disabled. Beta user limit of 50 users has been reached. Please try again later."
  *       '500':
  *         description: Server error during registration.
  *         content:
@@ -86,6 +145,7 @@ router.post(
       .isLength({ min: 8 }).withMessage('Password must be at least 8 characters long.')
   ],
   validate,
+  checkBetaUserLimit, // Add beta limit check before registration
   register
 );
 
@@ -406,5 +466,66 @@ if (process.env.NODE_ENV !== 'production') {
     })
   );
 }
+
+/**
+ * @openapi
+ * /auth/beta-status:
+ *   get:
+ *     tags:
+ *       - Auth
+ *     summary: Get beta registration status
+ *     description: Returns beta configuration for frontend registration controls
+ *     responses:
+ *       '200':
+ *         description: Beta status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 betaEnabled:
+ *                   type: boolean
+ *                   example: true
+ *                 userCount:
+ *                   type: integer
+ *                   example: 45
+ *                 limit:
+ *                   type: integer
+ *                   example: 50
+ *       '500':
+ *         description: Server error
+ */
+router.get('/beta-status', catchAsync(async (req, res, next) => {
+  try {
+    const betaEnabled = process.env.BETA_ENABLED === 'true';
+    
+    if (!betaEnabled) {
+      return res.json({ betaEnabled: false });
+    }
+
+    const userCount = await User.countDocuments();
+    const betaLimit = parseInt(process.env.BETA_USER_LIMIT || '50', 10);
+
+    logger.info('Beta status requested', {
+      betaEnabled,
+      userCount,
+      betaLimit,
+      ip: req.ip
+    });
+
+    res.json({
+      betaEnabled: true,
+      userCount,
+      limit: betaLimit
+    });
+  } catch (error) {
+    logger.error('Beta status error:', { 
+      error: error.message, 
+      stack: error.stack,
+      ip: req.ip 
+    });
+    return next(new AppError('Failed to get beta status', 500));
+  }
+}));
 
 export default router;

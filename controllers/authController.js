@@ -1,5 +1,6 @@
 // controllers/authController.js
-import User from '../models/User.js'; // Assuming ESM
+import User from '../models/User.js';
+// Assuming ESM
 import { hashPassword, comparePassword } from '../utils/hash.js'; // Assuming ESM
 import {
     generateAccessToken,
@@ -7,15 +8,27 @@ import {
     verifyRefreshToken,
     revokeRefreshToken,
     revokeAllUserRefreshTokens
-} from '../utils/jwt.js'; // Assuming ESM
+} from '../utils/jwt.js';
+// Assuming ESM
 import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js'; // Assuming ESM
-import logger from '../config/logger.js'; // Import logger
+import logger from '../config/logger.js';
+// Import logger
+
+const checkBetaUserLimit = async () => {
+  if (process.env.BETA_ENABLED === 'true') {
+    const betaLimit = parseInt(process.env.BETA_USER_LIMIT || '50', 10);
+    const userCount = await User.countDocuments();
+    
+    if (userCount >= betaLimit) {
+      throw new AppError(`Beta registration limit reached (${betaLimit} users). Please try again later.`, 403);
+    }
+  }
+};
 
 const getDeviceInfo = (req) => ({
     userAgent: req.get('User-Agent') || '',
     ip: req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || ''
 });
-
 // Wrap all async functions with catchAsync
 export const login = catchAsync(async (req, res, next) => {
     const { email, password } = req.body;
@@ -52,6 +65,9 @@ export const register = catchAsync(async (req, res, next) => {
     const lowerEmail = email.toLowerCase();
     logger.info('Registration attempt', { email: lowerEmail });
 
+    // Check beta user limit FIRST
+    await checkBetaUserLimit();
+
     let user = await User.findOne({ email: lowerEmail });
     if (user) {
         logger.warn('Registration failed: User already exists', { email: lowerEmail });
@@ -73,7 +89,6 @@ export const register = catchAsync(async (req, res, next) => {
 
     // Fetch user without password for the response
     const userResponse = await User.findById(user.id);
-
     res.status(201).json({
         accessToken,
         refreshToken: refreshTokenString,

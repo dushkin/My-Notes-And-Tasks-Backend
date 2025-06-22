@@ -37,6 +37,7 @@ import authRoutes from './routes/authRoutes.js';
 import itemsRoutes from './routes/itemsRoutes.js';
 import imageRoutes from './routes/imageRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import metaRoutes from './routes/metaRoutes.js'; // Add meta routes import
 
 process.on('uncaughtException', (err) => {
     console.error('UNCAUGHT EXCEPTION DETAILS:');
@@ -66,6 +67,9 @@ logger.debug('Environment Variables Check', {
     BACKEND_URL: process.env.BACKEND_URL ? 'Set' : 'Not Set',
     MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not Set',
     PORT: process.env.PORT ? process.env.PORT : 'Not Set',
+    // Beta configuration
+    BETA_ENABLED: process.env.BETA_ENABLED ? 'Set' : 'Not Set (default: false)',
+    BETA_USER_LIMIT: process.env.BETA_USER_LIMIT ? 'Set' : 'Not Set (default: 50)',
     // Scheduled tasks environment variables
     ENABLE_SCHEDULED_TASKS: process.env.ENABLE_SCHEDULED_TASKS ? 'Set' : 'Not Set (default: true)',
     ORPHANED_IMAGE_CLEANUP_SCHEDULE: process.env.ORPHANED_IMAGE_CLEANUP_SCHEDULE ? 'Set' : 'Not Set (default: 0 2 * * *)',
@@ -262,6 +266,8 @@ try {
     logger.debug('itemsRoutes registered.');
     app.use('/api/images', imageRoutes);
     logger.debug('imageRoutes registered.');
+    app.use('/api/meta', metaRoutes); // Register meta routes
+    logger.debug('metaRoutes registered.');
 
     // Register admin routes (optional - only if you want admin functionality)
     if (process.env.ENABLE_ADMIN_ROUTES !== 'false') {
