@@ -37,7 +37,8 @@ import authRoutes from './routes/authRoutes.js';
 import itemsRoutes from './routes/itemsRoutes.js';
 import imageRoutes from './routes/imageRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
-import metaRoutes from './routes/metaRoutes.js'; // Add meta routes import
+import metaRoutes from './routes/metaRoutes.js';
+import paddleWebhook from './routes/paddleWebhook.js';
 
 process.on('uncaughtException', (err) => {
     console.error('UNCAUGHT EXCEPTION DETAILS:');
@@ -266,8 +267,10 @@ try {
     logger.debug('itemsRoutes registered.');
     app.use('/api/images', imageRoutes);
     logger.debug('imageRoutes registered.');
-    app.use('/api/meta', metaRoutes); // Register meta routes
+    app.use('/api/meta', metaRoutes);
     logger.debug('metaRoutes registered.');
+    app.use('/api/paddle', paddleWebhook);
+    logger.debug('paddleWebhook registered.');
 
     // Register admin routes (optional - only if you want admin functionality)
     if (process.env.ENABLE_ADMIN_ROUTES !== 'false') {

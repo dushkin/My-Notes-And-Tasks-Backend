@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "4.2.0",
-  "commitMessage": "Support beta mode, max 50 users",
+  "version": "5.0.0",
+  "commitMessage": "Paddle implementation",
   "description": "",
   "main": "server.js",
   "type": "module",

@@ -1,4 +1,3 @@
-// routes/metaRoutes.js
 import express from 'express';
 import User from '../models/User.js';
 import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
