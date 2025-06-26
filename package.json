@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.2.0",
-  "commitMessage": "Support account cancellation",
+  "version": "5.2.1",
+  "commitMessage": "Removed redundant deletedAt attribute from user model",
   "description": "",
   "main": "server.js",
   "type": "module",

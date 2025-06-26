@@ -2,7 +2,6 @@ import mongoose from 'mongoose';
 import { fieldEncryption } from 'mongoose-field-encryption';
 
 const Schema = mongoose.Schema;
-
 const userSchema = new Schema({
     email: {
         type: String,
@@ -27,6 +26,7 @@ const userSchema = new Schema({
         type: Boolean,
         default: false
     },
+    
     notesTree: {
         type: Schema.Types.Mixed,
         default: []
@@ -38,10 +38,6 @@ const userSchema = new Schema({
     updatedAt: {
         type: Date,
         default: Date.now
-    },
-    deletedAt: { 
-        type: Date, 
-        default: null 
     }
 });
 
@@ -50,13 +46,11 @@ userSchema.pre('save', function (next) {
     if (this.isModified()) this.updatedAt = Date.now();
     next();
 });
-
 userSchema.methods.toJSON = function () {
     const obj = this.toObject();
     delete obj.password;
     return obj;
 };
-
 // Encrypt notesTree field
 userSchema.plugin(fieldEncryption, {
     fields: ['notesTree'],
