@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.2.1",
-  "commitMessage": "Removed redundant deletedAt attribute from user model",
+  "version": "5.2.2",
+  "commitMessage": "Fix cancellation issue",
   "description": "",
   "main": "server.js",
   "type": "module",

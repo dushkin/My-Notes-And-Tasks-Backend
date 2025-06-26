@@ -10,25 +10,15 @@ import logger from '../config/logger.js';
 const router = express.Router();
 // Token configuration
 const DELETION_TOKEN_SECRET = process.env.DELETION_TOKEN_SECRET || process.env.JWT_SECRET || 'fallback-secret-key';
-const DELETION_TOKEN_EXPIRY = '1h'; // Shortened expiry for a single-action token
+const DELETION_TOKEN_EXPIRY = '1h'; // A short lifespan is good for single-action tokens
 
 // Helper functions for token management
 const generateToken = (userId) => {
   try {
-    const payload = {
-      userId: userId,
-      purpose: 'account_deletion',
-      timestamp: Date.now(),
-      nonce: crypto.randomBytes(16).toString('hex')
-    };
-    const token = jwt.sign(payload, DELETION_TOKEN_SECRET, {
-      expiresIn: DELETION_TOKEN_EXPIRY,
-      issuer: 'your-app-name', 
-      subject: userId.toString()
-    });
-    return token;
+    const payload = { userId, purpose: 'account_deletion', timestamp: Date.now(), nonce: crypto.randomBytes(16).toString('hex') };
+    return jwt.sign(payload, DELETION_TOKEN_SECRET, { expiresIn: DELETION_TOKEN_EXPIRY, issuer: 'your-app-name', subject: userId.toString() });
   } catch (error) {
-    console.error('Error generating deletion token:', error);
+    logger.error('Error generating deletion token:', error);
     throw new Error('Failed to generate deletion token');
   }
 };
@@ -36,18 +26,11 @@ const generateToken = (userId) => {
 const verifyToken = (token) => {
   try {
     const decoded = jwt.verify(token, DELETION_TOKEN_SECRET);
-    if (decoded.purpose !== 'account_deletion') {
-      throw new Error('Invalid token purpose');
-    }
+    if (decoded.purpose !== 'account_deletion') throw new Error('Invalid token purpose');
     return decoded.userId;
   } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      throw new Error('Invalid token');
-    } else if (error.name === 'TokenExpiredError') {
-      throw new Error('Token expired');
-    } else {
-      throw new Error(`Token verification failed: ${error.message}`);
-    }
+    logger.warn('Account deletion token verification failed', { error: error.message });
+    throw error; // Re-throw to be caught by the route handler
   }
 };
 
@@ -57,9 +40,8 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const sendDeletionEmail = async (email, token) => {
   try {
     const confirmationUrl = `${process.env.BACKEND_URL || 'http://localhost:5001'}/api/account/delete-confirm/${token}`;
-    
-    const { data, error } = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'onboarding@resend.dev',
+    await resend.emails.send({
+      from: process.env.FROM_EMAIL,
       to: email,
       subject: 'Confirm Permanent Account Deletion - ACTION REQUIRED',
       html: `
@@ -96,20 +78,19 @@ const sendDeletionEmail = async (email, token) => {
         </html>
       `,
     });
-
-    if (error) {
-      console.error('Resend API error:', error);
-      throw new Error(`Failed to send email: ${error.message}`);
-    }
+    logger.info('Deletion confirmation email sent successfully', { to: email });
     return true;
   } catch (error) {
-    console.error('Error sending deletion email:', error);
+    logger.error('Resend API error:', { message: error.message });
     throw new Error('Failed to send confirmation email');
   }
 };
 
 // Export user data
-router.get('/export', requireAuth, async (req, res) => {
+router.get(
+  '/export',
+  requireAuth,
+  async (req, res) => {
     try {
       const userId = req.user.id;
       const user = await User.findById(userId).select('-password');
@@ -122,26 +103,34 @@ router.get('/export', requireAuth, async (req, res) => {
       console.error('Export error:', error);
       res.status(500).json({ message: 'Failed to export data' });
     }
-});
+  }
+);
 
-// Request deletion (sends confirmation email)
-router.post('/delete-request', requireAuth, async (req, res, next) => {
+// This endpoint sends the deletion email
+router.post(
+  '/delete-request',
+  requireAuth,
+  async (req, res, next) => {
     try {
-      const userId = req.user.id;
-      const user = await User.findById(userId);
+      const user = await User.findById(req.user.id);
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
-      const token = generateToken(userId);
+      
+      const token = generateToken(req.user.id);
       await sendDeletionEmail(user.email, token);
+      
       res.json({ message: 'Confirmation email sent' });
     } catch (error) {
       next(error);
     }
-});
+  }
+);
 
-// Confirm and execute permanent deletion (via emailed link)
-router.get('/delete-confirm/:token', async (req, res, next) => {
+// This is the endpoint the user clicks in the email to confirm permanent deletion
+router.get(
+  '/delete-confirm/:token',
+  async (req, res, next) => {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const session = await mongoose.startSession();
     
@@ -151,25 +140,28 @@ router.get('/delete-confirm/:token', async (req, res, next) => {
       session.startTransaction();
       
       const user = await User.findById(userId).session(session);
+      // If user is already gone, it's still a "success" from the user's perspective
       if (!user) {
-        // User may have already been deleted, which is a success case for the user
         await session.abortTransaction();
         return res.redirect(`${frontendUrl}/deletion-status?success=true`);
       }
       
+      // Perform the permanent deletion
       await RefreshToken.deleteMany({ userId: userId }).session(session);
       await User.findByIdAndDelete(userId).session(session);
       
       await session.commitTransaction();
       
+      logger.info('User account permanently deleted via confirmation link', { userId });
       return res.redirect(`${frontendUrl}/deletion-status?success=true`);
     } catch (error) {
       await session.abortTransaction();
-      logger.error('Error in /delete-confirm endpoint:', { message: error.message });
+      logger.error('Error during /delete-confirm endpoint execution:', { message: error.message });
       return res.redirect(`${frontendUrl}/deletion-status?success=false&error=${encodeURIComponent(error.message)}`);
     } finally {
       session.endSession();
     }
-});
+  }
+);
 
 export default router;

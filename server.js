@@ -1,4 +1,3 @@
-// server.js
 import 'dotenv/config';
 import {
     globalErrorHandler,
@@ -310,7 +309,7 @@ if (isMainModule) {
         });
     } else {
         // If test env (DB handled by Jest setup) or DB already connected
-        logger.info(isTestEnv ? "Test environment:  Starting server immediately." : "MongoDB already connected or connection attempt in progress. Starting server.");
+        logger.info(isTestEnv ? "Test environment: Starting server immediately." : "MongoDB already connected or connection attempt in progress. Starting server.");
         startServer();
     }
 }
