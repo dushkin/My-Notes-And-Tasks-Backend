@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.0.0",
-  "commitMessage": "Paddle implementation",
+  "version": "5.1.0",
+  "commitMessage": "Added mongoose encription + encription migration script",
   "description": "",
   "main": "server.js",
   "type": "module",

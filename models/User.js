@@ -1,6 +1,7 @@
-// models/User.js
-import mongoose from 'mongoose'; // Changed from require
-const Schema = mongoose.Schema; // [cite: your original refs]
+import mongoose from 'mongoose';
+import { fieldEncryption } from 'mongoose-field-encryption';
+
+const Schema = mongoose.Schema;
 
 const userSchema = new Schema({
     email: {
@@ -10,7 +11,7 @@ const userSchema = new Schema({
         lowercase: true,
         trim: true,
         match: [/\S+@\S+\.\S+/, 'Please use a valid email address'],
-        index: true // [cite: your original refs]
+        index: true
     },
     password: {
         type: String,
@@ -28,7 +29,7 @@ const userSchema = new Schema({
     },
     notesTree: {
         type: Schema.Types.Mixed,
-        default: [] // [cite: your original ref]
+        default: []
     },
     createdAt: {
         type: Date,
@@ -40,7 +41,7 @@ const userSchema = new Schema({
     }
 });
 
-// Preserve your original timestamp hook
+// Preserve timestamp
 userSchema.pre('save', function (next) {
     if (this.isModified()) {
         this.updatedAt = Date.now();
@@ -53,5 +54,11 @@ userSchema.methods.toJSON = function () {
     delete obj.password;
     return obj;
 };
+
+// Encrypt notesTree field
+userSchema.plugin(fieldEncryption, {
+    fields: ['notesTree'],
+    secret: process.env.ENCRYPTION_SECRET
+});
 
 export default mongoose.model('User', userSchema);
