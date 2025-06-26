@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.1.0",
-  "commitMessage": "Added mongoose encription + encription migration script",
+  "version": "5.1.1",
+  "commitMessage": "DATA_ENCRYPTION_SECRET fix",
   "description": "",
   "main": "server.js",
   "type": "module",

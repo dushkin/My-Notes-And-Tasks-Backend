@@ -58,7 +58,7 @@ userSchema.methods.toJSON = function () {
 // Encrypt notesTree field
 userSchema.plugin(fieldEncryption, {
     fields: ['notesTree'],
-    secret: process.env.ENCRYPTION_SECRET
+    secret: process.env.DATA_ENCRYPTION_SECRET
 });
 
 export default mongoose.model('User', userSchema);
