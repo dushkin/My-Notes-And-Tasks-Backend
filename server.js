@@ -1,13 +1,11 @@
 // server.js
 import 'dotenv/config';
-
 import {
     globalErrorHandler,
     notFoundHandler,
     handleUnhandledRejection,
     handleUncaughtException
 } from './middleware/errorHandlerMiddleware.js';
-
 handleUncaughtException();
 
 import express from 'express';
@@ -18,7 +16,6 @@ import mongoSanitize from 'express-mongo-sanitize';
 
 import xssCleanModule from 'xss-clean';
 const xss = typeof xssCleanModule === 'function' ? xssCleanModule : xssCleanModule.default;
-
 import hpp from 'hpp';
 import compression from 'compression';
 import path, { dirname } from 'path';
@@ -29,16 +26,17 @@ import { generalLimiter } from './middleware/rateLimiterMiddleware.js';
 import imageCorsMiddleware from './middleware/imageCorsMiddleware.js';
 
 import logger from './config/logger.js';
-
 // Import scheduled tasks service
 import scheduledTasksService from './services/scheduledTasksService.js';
 
+// --- IMPORT ALL ROUTERS ---
 import authRoutes from './routes/authRoutes.js';
 import itemsRoutes from './routes/itemsRoutes.js';
 import imageRoutes from './routes/imageRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import metaRoutes from './routes/metaRoutes.js';
 import paddleWebhook from './routes/paddleWebhook.js';
+import accountRoutes from './routes/accountRoutes.js';
 
 process.on('uncaughtException', (err) => {
     console.error('UNCAUGHT EXCEPTION DETAILS:');
@@ -47,19 +45,16 @@ process.on('uncaughtException', (err) => {
     console.error('Error stack:', err.stack);
     process.exit(1);
 });
-
 process.on('unhandledRejection', (err) => {
     console.error('UNHANDLED REJECTION DETAILS:');
     console.error('Error:', err);
     process.exit(1);
 });
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 let isGracefullyClosing = false;
 const app = express();
-
 logger.info('Application starting...', { node_env: process.env.NODE_ENV });
 logger.debug('Environment Variables Check', {
     ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS ? 'Set' : 'Not Set',
@@ -68,9 +63,11 @@ logger.debug('Environment Variables Check', {
     BACKEND_URL: process.env.BACKEND_URL ? 'Set' : 'Not Set',
     MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not Set',
     PORT: process.env.PORT ? process.env.PORT : 'Not Set',
+    DATA_ENCRYPTION_SECRET: process.env.DATA_ENCRYPTION_SECRET ? 'Set' : 'Not Set',
     // Beta configuration
     BETA_ENABLED: process.env.BETA_ENABLED ? 'Set' : 'Not Set (default: false)',
     BETA_USER_LIMIT: process.env.BETA_USER_LIMIT ? 'Set' : 'Not Set (default: 50)',
+
     // Scheduled tasks environment variables
     ENABLE_SCHEDULED_TASKS: process.env.ENABLE_SCHEDULED_TASKS ? 'Set' : 'Not Set (default: true)',
     ORPHANED_IMAGE_CLEANUP_SCHEDULE: process.env.ORPHANED_IMAGE_CLEANUP_SCHEDULE ? 'Set' : 'Not Set (default: 0 2 * * *)',
@@ -80,9 +77,14 @@ logger.debug('Environment Variables Check', {
 
 const isTestEnv = process.env.NODE_ENV === 'test';
 const MONGODB_URI = process.env.MONGODB_URI;
+const DATA_ENCRYPTION_SECRET = process.env.DATA_ENCRYPTION_SECRET;
 
 if (!isTestEnv && !MONGODB_URI) {
     logger.error('FATAL ERROR: MONGODB_URI is not defined. Exiting.');
+    process.exit(1);
+}
+if (!isTestEnv && !DATA_ENCRYPTION_SECRET) {
+    logger.error('FATAL ERROR: DATA_ENCRYPTION_SECRET is not defined. Exiting.');
     process.exit(1);
 }
 
@@ -98,7 +100,6 @@ if (!isTestEnv) {
             logger.error('Initial MongoDB connection error. Exiting.', { message: err.message, stack: err.stack });
             process.exit(1);
         });
-
     mongoose.connection.on('error', (err) =>
         logger.error('MongoDB connection error after initial connection:', { message: err.message })
     );
@@ -116,7 +117,6 @@ if (!isTestEnv) {
 function initializeScheduledTasks() {
     // Check if scheduled tasks are enabled (default: true)
     const enableScheduledTasks = process.env.ENABLE_SCHEDULED_TASKS !== 'false';
-
     if (!enableScheduledTasks) {
         logger.info('Scheduled tasks disabled via ENABLE_SCHEDULED_TASKS environment variable');
         return;
@@ -145,14 +145,12 @@ app.use(helmet({
     contentSecurityPolicy: false,  // Disable CSP for now
     crossOriginEmbedderPolicy: false
 }));
-
 const allowedOriginsStr = process.env.ALLOWED_ORIGINS || '';
 const allowedOriginsList = allowedOriginsStr ? allowedOriginsStr.split(',').map(origin => origin.trim()) : '*';
 const corsOptions = {
     origin: (origin, callback) => {
         // Allow requests with no origin (like mobile apps, curl, or direct URL access)
         if (!origin) return callback(null, true);
-
         if (allowedOriginsList === '*' || allowedOriginsList.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
@@ -168,7 +166,6 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 logger.info('CORS middleware initialized', { configuredOrigins: allowedOriginsList === '*' ? 'All (*)' : allowedOriginsList });
-
 app.use((req, res, next) => {
     const start = Date.now();
     const { method, originalUrl, ip } = req;
@@ -205,7 +202,6 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(mongoSanitize());
-
 if (typeof xss === 'function') {
     app.use(xss());
 } else {
@@ -219,7 +215,6 @@ app.use('/api/', generalLimiter);
 const publicUploadsPath = path.join(__dirname, 'public', 'uploads');
 
 app.use('/uploads', imageCorsMiddleware);
-
 // Serve static files
 app.use('/uploads', express.static(publicUploadsPath, {
     maxAge: '1y', // Cache for 1 year
@@ -233,12 +228,10 @@ app.use('/uploads', express.static(publicUploadsPath, {
         }
     }
 }));
-
 logger.info('Static file serving configured for /uploads', {
     path: publicUploadsPath,
     corsEnabled: true
 });
-
 try {
     logger.debug('Registering routes...');
     app.get('/api/health', (req, res) => {
@@ -261,12 +254,15 @@ try {
         }
     });
 
+    // --- REGISTER ALL ROUTERS WITH THE APP ---
     app.use('/api/auth', authRoutes);
     logger.debug('authRoutes registered.');
     app.use('/api/items', itemsRoutes);
     logger.debug('itemsRoutes registered.');
     app.use('/api/images', imageRoutes);
     logger.debug('imageRoutes registered.');
+    app.use('/api/account', accountRoutes); 
+    logger.debug('accountRoutes registered.');
     app.use('/api/meta', metaRoutes);
     logger.debug('metaRoutes registered.');
     app.use('/api/paddle', paddleWebhook);
@@ -291,7 +287,6 @@ app.use(globalErrorHandler);
 let serverInstance;
 const mainScriptPath = fileURLToPath(import.meta.url);
 const isMainModule = process.argv[1] === mainScriptPath || (typeof require !== 'undefined' && require.main === module && require.main.filename === mainScriptPath);
-
 if (isMainModule) {
     const PORT = process.env.PORT || 5001;
     const startServer = () => {
@@ -315,7 +310,7 @@ if (isMainModule) {
         });
     } else {
         // If test env (DB handled by Jest setup) or DB already connected
-        logger.info(isTestEnv ? "Test environment: Starting server immediately." : "MongoDB already connected or connection attempt in progress. Starting server.");
+        logger.info(isTestEnv ? "Test environment:  Starting server immediately." : "MongoDB already connected or connection attempt in progress. Starting server.");
         startServer();
     }
 }
@@ -323,7 +318,6 @@ if (isMainModule) {
 const shutdown = async (signal) => {
     isGracefullyClosing = true;
     logger.info(`Received ${signal}. Shutting down gracefully...`);
-
     // Shutdown scheduled tasks service first
     try {
         await scheduledTasksService.shutdown();

@@ -9,9 +9,11 @@ import {
     ensureServerSideIdsAndStructure,
     uuidv4,
     findParentAndSiblings // Correctly import the missing function
-} from '../utils/backendTreeUtils.js'; // Assuming ESM
+} from '../utils/backendTreeUtils.js';
+// Assuming ESM
 import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js'; // Assuming ESM
-import logger from '../config/logger.js'; // Import logger
+import logger from '../config/logger.js';
+// Import logger
 
 function addMissingTimestampsToTree(nodes, defaultTimestamp) {
     if (!Array.isArray(nodes)) {
@@ -43,13 +45,13 @@ export const getNotesTree = catchAsync(async (req, res, next) => {
 
     let treeToReturn = user.notesTree || [];
     if (Array.isArray(treeToReturn)) {
-        const userLastUpdated = user.updatedAt ? user.updatedAt.toISOString() : new Date(0).toISOString();
+        const userLastUpdated = user.updatedAt ? 
+            user.updatedAt.toISOString() : new Date(0).toISOString();
         treeToReturn = addMissingTimestampsToTree(treeToReturn, userLastUpdated);
     }
     logger.debug('Notes tree fetched successfully', { userId, treeSize: treeToReturn.length });
     res.status(200).json({ notesTree: treeToReturn });
 });
-
 export const getItem = catchAsync(async (req, res, next) => {
     const userId = req.user.id;
     const { itemId } = req.params;
@@ -62,7 +64,8 @@ export const getItem = catchAsync(async (req, res, next) => {
     }
 
     let currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
-    const itemSearchResult = findItemRecursive(currentTree, itemId);
+    const 
+        itemSearchResult = findItemRecursive(currentTree, itemId);
 
     if (!itemSearchResult || !itemSearchResult.item) {
         logger.warn('Item not found for retrieval', { userId, itemId });
@@ -72,7 +75,6 @@ export const getItem = catchAsync(async (req, res, next) => {
     logger.info('Item retrieved successfully', { userId, itemId });
     res.status(200).json(itemSearchResult.item);
 });
-
 export const createItem = catchAsync(async (req, res, next) => {
     const userId = req.user.id;
     const { label, type, content, completed } = req.body;
@@ -83,7 +85,8 @@ export const createItem = catchAsync(async (req, res, next) => {
 
     const user = await User.findById(userId);
     if (!user) {
-        logger.warn('User not found for item creation', { userId });
+        logger.warn('User not found for item creation', { 
+            userId });
         return next(new AppError('User not found', 404));
     }
 
@@ -105,7 +108,8 @@ export const createItem = catchAsync(async (req, res, next) => {
     }
 
     if (hasSiblingWithName(parentArray, trimmedLabel)) {
-        const location = parentId ? `in folder "${parentItem?.label || parentId}"` : "at the root level";
+        const location = parentId ?
+            `in folder "${parentItem?.label || parentId}"` : "at the root level";
         logger.warn('Item name conflict during creation', { userId, label: trimmedLabel, location });
         return next(new AppError(`An item named "${trimmedLabel}" already exists ${location}`, 400));
     }
@@ -122,7 +126,8 @@ export const createItem = catchAsync(async (req, res, next) => {
         newItem.children = [];
     }
     if (type === 'note' || type === 'task') {
-        newItem.content = content !== undefined ? content : "";
+        newItem.content = content !== undefined ?
+            content : "";
     }
     if (type === 'task') {
         newItem.completed = !!completed;
@@ -139,19 +144,13 @@ export const createItem = catchAsync(async (req, res, next) => {
 
     user.notesTree = currentTree;
     user.markModified('notesTree');
-    const savedUser = await user.save();
+    await user.save();
     logger.info('Item created successfully', { userId, itemId: newItem.id, type, label: trimmedLabel, parentId });
 
-    const finalTree = Array.isArray(savedUser.notesTree) ? savedUser.notesTree : [];
-    const createdItemSearchResult = findItemRecursive(finalTree, newItem.id);
-
-    if (!createdItemSearchResult || !createdItemSearchResult.item) {
-        logger.error("Critical Error: Newly created item not found after save", { userId, itemId: newItem.id });
-        return next(new AppError('Error retrieving created item after save', 500));
-    }
-    res.status(201).json(createdItemSearchResult.item);
+    // Directly return the 'newItem' object which is guaranteed to be correct.
+    // Avoids re-searching the tree which can fail due to encryption/model state.
+    res.status(201).json(newItem);
 });
-
 export const updateItem = catchAsync(async (req, res, next) => {
     const userId = req.user.id;
     const { itemId } = req.params;
@@ -164,7 +163,8 @@ export const updateItem = catchAsync(async (req, res, next) => {
         return next(new AppError('User not found', 404));
     }
 
-    let currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
+    let currentTree = 
+        Array.isArray(user.notesTree) ? user.notesTree : [];
     logger.debug('Current tree before update attempt', { userId, itemId, treeSize: currentTree.length });
 
     const originalItemSearchResult = findItemRecursive(currentTree, itemId);
@@ -173,9 +173,9 @@ export const updateItem = catchAsync(async (req, res, next) => {
         return next(new AppError('Item not found', 404));
     }
     const { item: originalItem, parentArray: originalSiblings } = originalItemSearchResult;
-
     if (updates.hasOwnProperty('label') && typeof updates.label === 'string') {
-        const trimmedNewLabel = updates.label.trim(); // Allows special characters like '"? and ...
+        const trimmedNewLabel = updates.label.trim();
+        // Allows special characters like '"? and ...
         if (trimmedNewLabel !== originalItem.label && hasSiblingWithName(originalSiblings || [], trimmedNewLabel, itemId)) {
             logger.warn('Item name conflict during update', { userId, itemId, newLabel: trimmedNewLabel });
             return next(new AppError(`An item named "${trimmedNewLabel}" already exists in this location`, 400));
@@ -184,6 +184,7 @@ export const updateItem = catchAsync(async (req, res, next) => {
 
     const updatedTreeInMemory = updateItemInTree(currentTree, itemId, updates);
     const itemAfterInMemoryUpdateResult = findItemRecursive(updatedTreeInMemory, itemId);
+ 
     const itemAfterInMemoryUpdate = itemAfterInMemoryUpdateResult ? itemAfterInMemoryUpdateResult.item : null;
 
     if (!itemAfterInMemoryUpdate) {
@@ -199,29 +200,11 @@ export const updateItem = catchAsync(async (req, res, next) => {
     user.notesTree = updatedTreeInMemory;
     user.markModified('notesTree');
     logger.debug('notesTree marked as modified, attempting save', { userId, itemId });
-
-    const savedUser = await user.save();
+    await user.save();
     logger.info('Item updated successfully', { userId, itemId });
-
-    let finalTreeToSearch = (savedUser && Array.isArray(savedUser.notesTree)) ? savedUser.notesTree : [];
-    if (!Array.isArray(savedUser?.notesTree)) {
-         logger.warn('savedUser.notesTree is not an array after save, re-fetching', { userId, itemId, savedNotesTreeType: typeof savedUser?.notesTree });
-         const reFetchedUser = await User.findById(userId);
-         finalTreeToSearch = (reFetchedUser && Array.isArray(reFetchedUser.notesTree)) ? reFetchedUser.notesTree : [];
-         if (!Array.isArray(finalTreeToSearch)){
-            logger.error('Even re-fetched user.notesTree is problematic', { userId, itemId });
-            finalTreeToSearch = [];
-         }
-    }
-
-    const itemSearchResult = findItemRecursive(finalTreeToSearch, itemId);
-    if (!itemSearchResult || !itemSearchResult.item) {
-        logger.error('Error finding updated item in the final tree', { userId, itemId });
-        return next(new AppError('Error retrieving updated item after save (not found in final tree)', 500));
-    }
     
-    logger.debug('Updated item details being sent to client', { userId, itemId, itemLabel: itemSearchResult.item.label });
-    res.status(200).json(itemSearchResult.item);
+    // Return the item from our reliable in-memory representation.
+    res.status(200).json(itemAfterInMemoryUpdate);
 });
 
 export const deleteItem = catchAsync(async (req, res, next) => {
@@ -236,6 +219,7 @@ export const deleteItem = catchAsync(async (req, res, next) => {
     }
 
     let currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
+   
     const itemExistsResult = findItemRecursive(currentTree, itemId);
 
     if (!itemExistsResult) {
@@ -262,10 +246,10 @@ export const deleteTree = catchAsync(async (req, res, next) => {
     user.notesTree = [];
     user.markModified('notesTree');
     await user.save();
-    logger.info('Entire tree deleted successfully', { userId });
+    logger.info('Entire tree deleted successfully', { userId 
+    });
     res.status(200).json({ message: 'Tree deleted successfully' });
 });
-
 export const replaceUserTree = catchAsync(async (req, res, next) => {
     const userId = req.user.id;
     const { newTree } = req.body; // Validated by express-validator
@@ -287,7 +271,8 @@ export const replaceUserTree = catchAsync(async (req, res, next) => {
     logger.info('User tree replaced successfully', { userId });
     res.status(200).json({
         message: 'Tree replaced successfully.',
-        notesTree: savedUser.notesTree || []
+        notesTree: savedUser.notesTree ||
+            []
     });
 });
 
@@ -330,7 +315,8 @@ export const moveItem = catchAsync(async (req, res, next) => {
   
   // 3. Update timestamps and save
   const finalIndex = (newIndex !== null && newIndex !== undefined && newIndex >= 0 && newIndex <= targetChildren.length) 
-    ? newIndex 
+    ?
+    newIndex 
     : targetChildren.length;
 
   targetChildren.splice(finalIndex, 0, itemToMove);
@@ -343,6 +329,5 @@ export const moveItem = catchAsync(async (req, res, next) => {
   user.notesTree = currentTree;
   user.markModified('notesTree');
   await user.save();
-
   res.status(200).json({ status: 'success', data: { movedItem: itemToMove } });
 });
