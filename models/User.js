@@ -42,23 +42,21 @@ const userSchema = new Schema({
 });
 
 // Preserve timestamp
-userSchema.pre('save', function (next) {
-    if (this.isModified()) {
-        this.updatedAt = Date.now();
-    }
-    next();
+userSchema.pre('save', function(next) {
+  if (this.isModified()) this.updatedAt = Date.now();
+  next();
 });
 
-userSchema.methods.toJSON = function () {
-    const obj = this.toObject();
-    delete obj.password;
-    return obj;
+userSchema.methods.toJSON = function() {
+  const obj = this.toObject();
+  delete obj.password;
+  return obj;
 };
 
 // Encrypt notesTree field
 userSchema.plugin(fieldEncryption, {
-    fields: ['notesTree'],
-    secret: process.env.DATA_ENCRYPTION_SECRET
+  fields: ['notesTree'],
+  secret: process.env.DATA_ENCRYPTION_SECRET
 });
 
 export default mongoose.model('User', userSchema);

@@ -1,11 +1,14 @@
-import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import User from '../backend/models/User.js';
-
 dotenv.config();
 
+import mongoose from 'mongoose';
+import User from '../models/User.js';
+
 async function migrate() {
-  await mongoose.connect(process.env.MONGODB_URI);
+  await mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+  });
   const users = await User.find({});
   for (const user of users) {
     user.markModified('notesTree');
