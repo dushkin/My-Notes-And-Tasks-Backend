@@ -1,6 +1,6 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.1.4",
+  "version": "5.1.5",
   "commitMessage": "Fixed encryption script",
   "description": "",
   "main": "server.js",
