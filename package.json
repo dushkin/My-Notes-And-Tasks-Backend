@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.3.0",
-  "commitMessage": "Support - Pro account cancellation leaves account alive until the end of the period",
+  "version": "5.3.1",
+  "commitMessage": "Fixed iOS login issues",
   "description": "",
   "main": "server.js",
   "type": "module",

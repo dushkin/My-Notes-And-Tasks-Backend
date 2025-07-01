@@ -1,4 +1,5 @@
 // controllers/authController.js
+// controllers/authController.js
 import User from '../models/User.js';
 // Assuming ESM
 import { hashPassword, comparePassword } from '../utils/hash.js'; // Assuming ESM
@@ -50,6 +51,12 @@ export const login = catchAsync(async (req, res, next) => {
     const deviceInfo = getDeviceInfo(req);
     const accessToken = generateAccessToken(user.id);
     const refreshToken = await generateRefreshToken(user.id, deviceInfo);
+    // Set HTTP-only secure cookie for refresh token
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'None',
+    });
 
     logger.info('Login successful', { email: lowerEmail, userId: user.id, ip: deviceInfo.ip, userAgent: deviceInfo.userAgent });
     const userResponse = await User.findById(user.id); // Fetch without password
