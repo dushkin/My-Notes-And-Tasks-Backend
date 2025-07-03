@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.3.2",
-  "commitMessage": "Fixed iOS login issues",
+  "version": "5.4.1",
+  "commitMessage": "Pro plan upgrade on localhost, firewalls disabled, ngrok tunneling, mobile hotspot network, Paddle Sandbox support",
   "description": "",
   "main": "server.js",
   "type": "module",
@@ -17,6 +17,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "axios": "^1.10.0",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
     "clamav.js": "^0.12.0",
