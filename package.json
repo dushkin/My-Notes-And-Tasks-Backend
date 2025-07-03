@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.4.1",
-  "commitMessage": "Pro plan upgrade on localhost, firewalls disabled, ngrok tunneling, mobile hotspot network, Paddle Sandbox support",
+  "version": "5.5.0",
+  "commitMessage": "Adjusted code to work on paddle production",
   "description": "",
   "main": "server.js",
   "type": "module",

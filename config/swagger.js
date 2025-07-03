@@ -23,15 +23,13 @@ const swaggerDefinition = {
   servers: [
     {
       // Use environment variable for base URL or default to localhost for development
-      url: `http://localhost:${process.env.PORT || 5001}/api`,
-      description: 'Development server',
+      url: `http://localhost:${process.env.PORT || 5001}/api`, description: 'Development server',
     },
-    // Add other servers like staging or production here if needed
-    // {
-    //   url: 'https://your-production-api.com/api',
-    //   description: 'Production server',
-    // },
+    {
+      url: 'https://notask.co/api', description: 'Production server',
+    },
   ],
+  
   // Define reusable components like schemas and security schemes
   components: {
     // Reusable data structures (schemas)
