@@ -22,6 +22,23 @@ const userSchema = new Schema({
         enum: ['user', 'admin'],
         default: 'user'
     },
+    subscriptionStatus: {
+        type: String,
+        enum: ['active', 'cancelled', 'past_due', 'none'],
+        default: 'none'
+    },
+    subscriptionEndsAt: {
+        type: Date
+    },
+    paddleSubscriptionId: {
+        type: String,
+        trim: true,
+        index: true
+    },
+    paddleTransactionId: {
+        type: String,
+        trim: true
+    },
     isVerified: {
         type: Boolean,
         default: false
@@ -40,7 +57,6 @@ const userSchema = new Schema({
         default: Date.now
     }
 });
-
 // Preserve timestamp
 userSchema.pre('save', function (next) {
     if (this.isModified()) this.updatedAt = Date.now();

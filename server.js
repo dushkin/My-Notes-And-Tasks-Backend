@@ -12,31 +12,28 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import helmet from 'helmet';
 import mongoSanitize from 'express-mongo-sanitize';
-
 import xssCleanModule from 'xss-clean';
 const xss = typeof xssCleanModule === 'function' ? xssCleanModule : xssCleanModule.default;
 import hpp from 'hpp';
 import compression from 'compression';
 import path, { dirname } from 'path';
 import { fileURLToPath } from 'url';
+import axios from 'axios';
+import authMiddleware from './middleware/authMiddleware.js';
+import { catchAsync, AppError } from './middleware/errorHandlerMiddleware.js';
 
 import { generalLimiter } from './middleware/rateLimiterMiddleware.js';
-
 import imageCorsMiddleware from './middleware/imageCorsMiddleware.js';
-
 import logger from './config/logger.js';
-// Import scheduled tasks service
 import scheduledTasksService from './services/scheduledTasksService.js';
 
-// --- IMPORT ALL ROUTERS ---
 import authRoutes from './routes/authRoutes.js';
 import itemsRoutes from './routes/itemsRoutes.js';
 import imageRoutes from './routes/imageRoutes.js';
-import adminRoutes from './routes/adminRoutes.js';
+import accountRoutes from './routes/accountRoutes.js';
 import metaRoutes from './routes/metaRoutes.js';
 import paddleWebhook from './routes/paddleWebhook.js';
-import accountRoutes from './routes/accountRoutes.js';
-
+import adminRoutes from './routes/adminRoutes.js';
 process.on('uncaughtException', (err) => {
     console.error('UNCAUGHT EXCEPTION DETAILS:');
     console.error('Error name:', err.name);
@@ -63,11 +60,9 @@ logger.debug('Environment Variables Check', {
     MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not Set',
     PORT: process.env.PORT ? process.env.PORT : 'Not Set',
     DATA_ENCRYPTION_SECRET: process.env.DATA_ENCRYPTION_SECRET ? 'Set' : 'Not Set',
-    // Beta configuration
+    PADDLE_API_KEY: process.env.PADDLE_API_KEY ? 'Set' : 'Not Set',
     BETA_ENABLED: process.env.BETA_ENABLED ? 'Set' : 'Not Set (default: false)',
     BETA_USER_LIMIT: process.env.BETA_USER_LIMIT ? 'Set' : 'Not Set (default: 50)',
-
-    // Scheduled tasks environment variables
     ENABLE_SCHEDULED_TASKS: process.env.ENABLE_SCHEDULED_TASKS ? 'Set' : 'Not Set (default: true)',
     ORPHANED_IMAGE_CLEANUP_SCHEDULE: process.env.ORPHANED_IMAGE_CLEANUP_SCHEDULE ? 'Set' : 'Not Set (default: 0 2 * * *)',
     EXPIRED_TOKEN_CLEANUP_SCHEDULE: process.env.EXPIRED_TOKEN_CLEANUP_SCHEDULE ? 'Set' : 'Not Set (default: 0 */6 * * *)',
@@ -77,6 +72,7 @@ logger.debug('Environment Variables Check', {
 const isTestEnv = process.env.NODE_ENV === 'test';
 const MONGODB_URI = process.env.MONGODB_URI;
 const DATA_ENCRYPTION_SECRET = process.env.DATA_ENCRYPTION_SECRET;
+const PADDLE_API_KEY = process.env.PADDLE_API_KEY;
 
 if (!isTestEnv && !MONGODB_URI) {
     logger.error('FATAL ERROR: MONGODB_URI is not defined. Exiting.');
@@ -86,13 +82,16 @@ if (!isTestEnv && !DATA_ENCRYPTION_SECRET) {
     logger.error('FATAL ERROR: DATA_ENCRYPTION_SECRET is not defined. Exiting.');
     process.exit(1);
 }
+if (!isTestEnv && !PADDLE_API_KEY) {
+    logger.error('FATAL ERROR: PADDLE_API_KEY is not defined. Exiting.');
+    process.exit(1);
+}
 
 if (!isTestEnv) {
     logger.info('Connecting to MongoDB...', { mongoUriPreview: MONGODB_URI.substring(0, 20) + '...' });
     mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 30000 })
         .then(() => {
             logger.info('Successfully connected to MongoDB.');
-            // Initialize scheduled tasks after successful DB connection
             initializeScheduledTasks();
         })
         .catch((err) => {
@@ -110,22 +109,16 @@ if (!isTestEnv) {
     logger.info('Test environment detected. Skipping direct Mongoose connection in server.js.');
 }
 
-/**
- * Initialize scheduled tasks
- */
 function initializeScheduledTasks() {
-    // Check if scheduled tasks are enabled (default: true)
     const enableScheduledTasks = process.env.ENABLE_SCHEDULED_TASKS !== 'false';
     if (!enableScheduledTasks) {
         logger.info('Scheduled tasks disabled via ENABLE_SCHEDULED_TASKS environment variable');
         return;
     }
-
     if (isTestEnv) {
         logger.info('Test environment detected. Skipping scheduled tasks initialization.');
         return;
     }
-
     try {
         scheduledTasksService.init();
         logger.info('Scheduled tasks service initialized successfully');
@@ -134,21 +127,44 @@ function initializeScheduledTasks() {
             error: error.message,
             stack: error.stack
         });
-        // Don't exit the process, but continue without scheduled tasks
         logger.warn('Continuing without scheduled tasks due to initialization error');
     }
 }
 
-// --- Apply tightened HTTP headers early ---------------------------------------
 app.use(helmet({
-    contentSecurityPolicy: false,  // Disable CSP for now
+    contentSecurityPolicy: {
+        directives: {
+            "default-src": ["'self'"],
+            "script-src": [
+                "'self'", 
+                "'unsafe-inline'", 
+                "'unsafe-eval'",
+                "https://cdn.paddle.com",
+                "https://sandbox-buy.paddle.com"
+            ],
+            "frame-src": [
+                "'self'", 
+                "https://sandbox-buy.paddle.com",
+                "https://buy.paddle.com"
+            ],
+            "connect-src": [
+                "'self'",
+                "http://localhost:5001",
+                "https://my-notes-and-tasks-backend.onrender.com",
+                "https://checkout.paddle.com",
+                "https://checkout-service.paddle.com", 
+                "https://sandbox-checkout-service.paddle.com"
+            ],
+            "img-src": ["'self'", "data:", "https:"],
+            "style-src": ["'self'", "'unsafe-inline'"]
+        },
+    },
     crossOriginEmbedderPolicy: false
 }));
 const allowedOriginsStr = process.env.ALLOWED_ORIGINS || '';
 const allowedOriginsList = allowedOriginsStr ? allowedOriginsStr.split(',').map(origin => origin.trim()) : '*';
 const corsOptions = {
     origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps, curl, or direct URL access)
         if (!origin) return callback(null, true);
         if (allowedOriginsList === '*' || allowedOriginsList.indexOf(origin) !== -1) {
             callback(null, true);
@@ -171,7 +187,6 @@ app.use((req, res, next) => {
     const userAgent = req.get('user-agent') || 'unknown';
     const requestId = req.headers['x-request-id'] || `req-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     req.requestId = requestId;
-
     logger.http('Incoming request', {
         requestId,
         method,
@@ -179,7 +194,6 @@ app.use((req, res, next) => {
         ip,
         userAgent,
     });
-
     res.on('finish', () => {
         const duration = Date.now() - start;
         const { statusCode } = res;
@@ -198,7 +212,19 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.json({ limit: '50mb' }));
+// START OF MODIFICATION
+// Keep the raw body for webhook signature verification
+app.use(express.json({
+    limit: '50mb',
+    verify: (req, res, buf) => {
+      // We only need the raw body for Paddle webhooks
+      if (req.originalUrl.startsWith('/api/paddle/webhook')) {
+        req.rawBody = buf.toString();
+      }
+    }
+}));
+// END OF MODIFICATION
+
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(mongoSanitize());
 if (typeof xss === 'function') {
@@ -206,21 +232,17 @@ if (typeof xss === 'function') {
 } else {
     logger.error('xss-clean module was not imported as a function. XSS middleware not applied.');
 }
-
 app.use(hpp({ whitelist: ['sort', 'fields', 'page', 'limit'] }));
 app.use(compression());
 app.use('/api/', generalLimiter);
 
-const publicUploadsPath = path.join(__dirname, 'public', 'uploads');
-
+const publicUploadsPath = path.join(__dirname, 'public', 'Uploads');
 app.use('/uploads', imageCorsMiddleware);
-// Serve static files
 app.use('/uploads', express.static(publicUploadsPath, {
-    maxAge: '1y', // Cache for 1 year
+    maxAge: '1y',
     etag: true,
     lastModified: true,
     setHeaders: (res, path) => {
-        // Additional headers for image files
         if (path.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
             res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
             res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
@@ -231,6 +253,75 @@ logger.info('Static file serving configured for /uploads', {
     path: publicUploadsPath,
     corsEnabled: true
 });
+app.post('/api/paddle/create-transaction', authMiddleware, catchAsync(async (req, res, next) => {
+    console.log('Received body:', req.body);
+    const { priceId, quantity, customerEmail, customData, successUrl, cancelUrl } = req.body;
+    const userId = req.user.id;
+    const requestId = req.requestId;
+    logger.info('Creating Paddle transaction', { userId, priceId, requestId });
+    if (!priceId || !quantity) {
+        logger.warn('Invalid request: Missing priceId or quantity', { userId, requestId, body: req.body });
+        return next(new AppError('Missing required fields: priceId and quantity', 400));
+    }
+    try {
+        const response = await axios.post(
+            'https://sandbox-api.paddle.com/transactions',
+            {
+                items: [{ price_id: priceId, quantity }],
+                customer_email: customerEmail || req.user.email || undefined,
+                custom_data: customData || { userId },
+                success_url: successUrl || `${process.env.FRONTEND_URL}/app`,
+                cancel_url: cancelUrl || `${process.env.FRONTEND_URL}/#pricing`,
+                collection_mode: 'automatic'
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.PADDLE_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+        logger.info('Paddle transaction created successfully', {
+            userId,
+            transactionId: response.data.data.id,
+            requestId,
+            paddleResponse: response.data
+        });
+        res.status(200).json({ transactionId: response.data.data.id });
+    } catch (error) {
+        logger.error('Paddle transaction creation failed', {
+            userId,
+            requestId,
+            error: error.response?.data || error.message,
+            status: error.response?.status,
+            paddleRequest: {
+                priceId,
+                quantity,
+                customerEmail,
+                customData,
+                successUrl,
+                cancelUrl
+            }
+        });
+        return next(new AppError(
+            error.response?.data?.message || 'Failed to create transaction',
+            error.response?.status || 500
+        ));
+    }
+}));
+
+const checkModule = (mod, name) => {
+    if (!mod) {
+        logger.error(`Module ${name} failed to import properly`);
+        try {
+            require.resolve(`./routes/${name}.js`);
+            logger.debug(`Module path exists: ./routes/${name}.js`);
+        } catch (e) {
+            logger.error(`Module path not found: ./routes/${name}.js`);
+        }
+    }
+};
+
 try {
     logger.debug('Registering routes...');
     app.get('/api/health', (req, res) => {
@@ -253,29 +344,40 @@ try {
         }
     });
 
-    // --- REGISTER ALL ROUTERS WITH THE APP ---
     app.use('/api/auth', authRoutes);
-    logger.debug('authRoutes registered.');
     app.use('/api/items', itemsRoutes);
-    logger.debug('itemsRoutes registered.');
     app.use('/api/images', imageRoutes);
-    logger.debug('imageRoutes registered.');
-    app.use('/api/account', accountRoutes); 
-    logger.debug('accountRoutes registered.');
+    app.use('/api/account', accountRoutes);
     app.use('/api/meta', metaRoutes);
-    logger.debug('metaRoutes registered.');
     app.use('/api/paddle', paddleWebhook);
-    logger.debug('paddleWebhook registered.');
 
-    // Register admin routes (optional - only if you want admin functionality)
+    checkModule(authRoutes, 'authRoutes');
+    checkModule(itemsRoutes, 'itemsRoutes');
+    checkModule(imageRoutes, 'imageRoutes');
+    checkModule(accountRoutes, 'accountRoutes');
+    checkModule(metaRoutes, 'metaRoutes');
+    checkModule(paddleWebhook, 'paddleWebhook');
     if (process.env.ENABLE_ADMIN_ROUTES !== 'false') {
         app.use('/api/admin', adminRoutes);
         logger.debug('adminRoutes registered.');
     } else {
         logger.info('Admin routes disabled via ENABLE_ADMIN_ROUTES environment variable');
     }
+
+    logger.debug('All routes registered successfully.');
+
 } catch (err) {
-    logger.error('Error registering routes:', { message: err.message, stack: err.stack });
+    logger.error('Error registering routes:', {
+        message: err.message,
+        stack: err.stack,
+        // Add more debugging info:
+        importedModules: {
+            authRoutes: !!authRoutes,
+            itemsRoutes: !!itemsRoutes,
+            imageRoutes: !!imageRoutes,
+            accountRoutes: !!accountRoutes
+        }
+    });
     throw err;
 }
 
@@ -294,21 +396,16 @@ if (isMainModule) {
         });
         handleUnhandledRejection(serverInstance);
     };
-
     if (!isTestEnv && mongoose.connection.readyState !== 1) {
-        // If not in test env, and DB not yet connected, wait for connected event
         logger.info("Server not started yet, waiting for MongoDB connection...");
         mongoose.connection.once('open', () => {
             logger.info("MongoDB connected (event 'open'), starting server.");
             startServer();
         });
-        // Also handle error during this wait, though initial connect has its own exit
         mongoose.connection.once('error', (err) => {
             logger.error("MongoDB connection error before server start, process will likely exit from connect .catch", { message: err.message });
-            // process.exit(1) // Already handled in initial connect .catch
         });
     } else {
-        // If test env (DB handled by Jest setup) or DB already connected
         logger.info(isTestEnv ? "Test environment: Starting server immediately." : "MongoDB already connected or connection attempt in progress. Starting server.");
         startServer();
     }
@@ -317,7 +414,6 @@ if (isMainModule) {
 const shutdown = async (signal) => {
     isGracefullyClosing = true;
     logger.info(`Received ${signal}. Shutting down gracefully...`);
-    // Shutdown scheduled tasks service first
     try {
         await scheduledTasksService.shutdown();
     } catch (error) {
@@ -326,7 +422,6 @@ const shutdown = async (signal) => {
             stack: error.stack
         });
     }
-
     if (serverInstance) {
         serverInstance.close(async () => {
             logger.info('HTTP server closed.');
