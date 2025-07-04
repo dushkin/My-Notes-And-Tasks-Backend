@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.5.0",
-  "commitMessage": "Adjusted code to work on paddle production",
+  "version": "5.5.1",
+  "commitMessage": "Updated create-transaction",
   "description": "",
   "main": "server.js",
   "type": "module",

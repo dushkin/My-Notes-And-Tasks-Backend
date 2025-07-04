@@ -136,14 +136,14 @@ app.use(helmet({
         directives: {
             "default-src": ["'self'"],
             "script-src": [
-                "'self'", 
-                "'unsafe-inline'", 
+                "'self'",
+                "'unsafe-inline'",
                 "'unsafe-eval'",
                 "https://cdn.paddle.com",
                 "https://sandbox-buy.paddle.com"
             ],
             "frame-src": [
-                "'self'", 
+                "'self'",
                 "https://sandbox-buy.paddle.com",
                 "https://buy.paddle.com"
             ],
@@ -152,7 +152,7 @@ app.use(helmet({
                 "http://localhost:5001",
                 "https://my-notes-and-tasks-backend.onrender.com",
                 "https://checkout.paddle.com",
-                "https://checkout-service.paddle.com", 
+                "https://checkout-service.paddle.com",
                 "https://sandbox-checkout-service.paddle.com"
             ],
             "img-src": ["'self'", "data:", "https:"],
@@ -217,10 +217,10 @@ app.use((req, res, next) => {
 app.use(express.json({
     limit: '50mb',
     verify: (req, res, buf) => {
-      // We only need the raw body for Paddle webhooks
-      if (req.originalUrl.startsWith('/api/paddle/webhook')) {
-        req.rawBody = buf.toString();
-      }
+        // We only need the raw body for Paddle webhooks
+        if (req.originalUrl.startsWith('/api/paddle/webhook')) {
+            req.rawBody = buf.toString();
+        }
     }
 }));
 // END OF MODIFICATION
@@ -253,62 +253,87 @@ logger.info('Static file serving configured for /uploads', {
     path: publicUploadsPath,
     corsEnabled: true
 });
-app.post('/api/paddle/create-transaction', authMiddleware, catchAsync(async (req, res, next) => {
-    console.log('Received body:', req.body);
-    const { priceId, quantity, customerEmail, customData, successUrl, cancelUrl } = req.body;
-    const userId = req.user.id;
-    const requestId = req.requestId;
-    logger.info('Creating Paddle transaction', { userId, priceId, requestId });
-    if (!priceId || !quantity) {
-        logger.warn('Invalid request: Missing priceId or quantity', { userId, requestId, body: req.body });
-        return next(new AppError('Missing required fields: priceId and quantity', 400));
-    }
-    try {
-        const response = await axios.post(
-            'https://sandbox-api.paddle.com/transactions',
-            {
-                items: [{ price_id: priceId, quantity }],
-                customer_email: customerEmail || req.user.email || undefined,
-                custom_data: customData || { userId },
-                success_url: successUrl || `${process.env.FRONTEND_URL}/app`,
-                cancel_url: cancelUrl || `${process.env.FRONTEND_URL}/#pricing`,
-                collection_mode: 'automatic'
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${process.env.PADDLE_API_KEY}`,
-                    'Content-Type': 'application/json'
+
+// Paddle environment and base URL (dynamic between sandbox and live)
+const PADDLE_ENV = process.env.NODE_ENV === 'production' ? 'production' : 'sandbox';
+const PADDLE_BASE_URL = PADDLE_ENV === 'production'
+    ? 'https://api.paddle.com'
+    : 'https://sandbox-api.paddle.com';
+
+app.post(
+    '/api/paddle/create-transaction',
+    authMiddleware,
+    catchAsync(async (req, res, next) => {
+        console.log('▶️ Paddle env:', PADDLE_ENV);
+        console.log('▶️ Received body:', req.body);
+
+        const {
+            priceId,
+            quantity,
+            customerEmail,
+            customData,
+            successUrl,
+            cancelUrl
+        } = req.body;
+
+        const userId = req.user.id;
+        const requestId = req.requestId;
+
+        logger.info('Creating Paddle transaction', { userId, priceId, requestId });
+
+        if (!priceId || !quantity) {
+            logger.warn(
+                'Invalid request: Missing priceId or quantity',
+                { userId, requestId, body: req.body }
+            );
+            return next(
+                new AppError('Missing required fields: priceId and quantity', 400)
+            );
+        }
+
+        try {
+            const response = await axios.post(
+                `${PADDLE_BASE_URL}/transactions`,
+                {
+                    items: [{ price_id: priceId, quantity }],
+                    customer_email: customerEmail || req.user.email,
+                    custom_data: customData || { userId },
+                    success_url: successUrl || `${process.env.FRONTEND_URL}/app`,
+                    cancel_url: cancelUrl || `${process.env.FRONTEND_URL}/#pricing`,
+                    collection_mode: 'automatic'
+                },
+                {
+                    headers: {
+                        Authorization: `Bearer ${PADDLE_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
                 }
-            }
-        );
-        logger.info('Paddle transaction created successfully', {
-            userId,
-            transactionId: response.data.data.id,
-            requestId,
-            paddleResponse: response.data
-        });
-        res.status(200).json({ transactionId: response.data.data.id });
-    } catch (error) {
-        logger.error('Paddle transaction creation failed', {
-            userId,
-            requestId,
-            error: error.response?.data || error.message,
-            status: error.response?.status,
-            paddleRequest: {
-                priceId,
-                quantity,
-                customerEmail,
-                customData,
-                successUrl,
-                cancelUrl
-            }
-        });
-        return next(new AppError(
-            error.response?.data?.message || 'Failed to create transaction',
-            error.response?.status || 500
-        ));
-    }
-}));
+            );
+
+            logger.info('Paddle transaction created', {
+                userId,
+                transactionId: response.data.data.id,
+                requestId,
+            });
+
+            return res.status(200).json({ transactionId: response.data.data.id });
+        } catch (err) {
+            logger.error('Paddle transaction creation failed', {
+                userId,
+                requestId,
+                status: err.response?.status,
+                paddleError: err.response?.data,
+            });
+            return next(
+                new AppError(
+                    err.response?.data?.message || 'Failed to create transaction',
+                    err.response?.status || 500
+                )
+            );
+        }
+    })
+);
+
 
 const checkModule = (mod, name) => {
     if (!mod) {
