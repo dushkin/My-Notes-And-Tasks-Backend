@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.5.1",
-  "commitMessage": "Updated create-transaction",
+  "version": "5.5.2",
+  "commitMessage": "Fixed live paddle process",
   "description": "",
   "main": "server.js",
   "type": "module",

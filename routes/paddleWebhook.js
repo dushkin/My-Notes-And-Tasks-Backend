@@ -3,6 +3,13 @@ import crypto from 'crypto';
 import User from '../models/User.js';
 import axios from 'axios'; // Import axios to make API calls to Paddle
 
+const PADDLE_ENV = process.env.NODE_ENV === 'production' ? 'production' : 'sandbox';
+const PADDLE_BASE_URL = PADDLE_ENV === 'production'
+    ? 'https://api.paddle.com'
+    : 'https://sandbox-api.paddle.com';
+const PADDLE_API_KEY = process.env.PADDLE_API_KEY;
+const PADDLE_WEBHOOK_SECRET = process.env.PADDLE_WEBHOOK_SECRET;
+
 const router = express.Router();
 
 // Helper function to get customer email if not in the payload
@@ -10,10 +17,10 @@ const getCustomerEmail = async (customerId) => {
   if (!customerId) return null;
   try {
     const response = await axios.get(
-      `https://sandbox-api.paddle.com/customers/${customerId}`,
+      `${PADDLE_BASE_URL}/customers/${customerId}`,
       {
         headers: {
-          Authorization: `Bearer ${process.env.PADDLE_API_KEY}`,
+          Authorization: `Bearer ${PADDLE_API_KEY}`,
           'Content-Type': 'application/json'
         }
       }
@@ -29,7 +36,7 @@ const getCustomerEmail = async (customerId) => {
 // Middleware to verify Paddle's webhook signature
 const verifyPaddleMiddleware = (req, res, next) => {
   const paddleSignature = req.headers['paddle-signature'];
-  const webhookSecret = process.env.PADDLE_WEBHOOK_SECRET_KEY;
+  const webhookSecret = PADDLE_WEBHOOK_SECRET;
 
   if (!paddleSignature || !webhookSecret) {
     console.warn('[Paddle] Missing signature or secret key.');
