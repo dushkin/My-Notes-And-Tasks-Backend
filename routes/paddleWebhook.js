@@ -158,14 +158,37 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
     transactionId: eventData?.id
   });
 
-  let email = eventData?.customer?.email || null;
+  let email = null;
 
-  // If email is not in the payload, try fetching it using the customer_id
-  if (!email && eventData?.customer_id) {
-    logger.info('Email not in payload, fetching from customer ID', { 
-      customerId: eventData.customer_id 
-    });
-    email = await getCustomerEmail(eventData.customer_id);
+  // Handle different event types and their payload structures
+  switch (eventType) {
+    case 'transaction.created':
+    case 'transaction.completed':
+      // For transaction events, email might be in customer object or we need to fetch it
+      email = eventData?.customer?.email || null;
+      if (!email && eventData?.customer_id) {
+        email = await getCustomerEmail(eventData.customer_id);
+      }
+      break;
+      
+    case 'customer.created':
+      // For customer events, email should be directly in the event data
+      email = eventData?.email || null;
+      break;
+      
+    case 'subscription.canceled':
+      // For subscription events, we might need to fetch customer details
+      if (eventData?.customer_id) {
+        email = await getCustomerEmail(eventData.customer_id);
+      }
+      break;
+      
+    default:
+      // For other events, try both approaches
+      email = eventData?.customer?.email || eventData?.email || null;
+      if (!email && eventData?.customer_id) {
+        email = await getCustomerEmail(eventData.customer_id);
+      }
   }
 
   const planId = eventData?.custom_data?.plan || null;
@@ -177,13 +200,32 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
     customerId: eventData?.customer_id
   });
 
+  // For some events, we might not need to process them immediately
+  // or they might not require a user lookup
   if (!email) {
     logger.warn('Could not determine email from webhook payload or customer lookup', {
       eventType,
       eventId,
       customerId: eventData?.customer_id,
-      hasCustomerObject: !!eventData?.customer
+      hasCustomerObject: !!eventData?.customer,
+      eventDataKeys: Object.keys(eventData || {})
     });
+    
+    // For certain events, we can acknowledge without processing
+    if (['transaction.created', 'customer.created'].includes(eventType)) {
+      logger.info('Acknowledging event without processing due to missing email', {
+        eventType,
+        eventId
+      });
+      return res.status(200).json({ 
+        received: true,
+        eventType,
+        eventId,
+        processed: false,
+        reason: 'Email not available for this event type'
+      });
+    }
+    
     return res.status(400).json({ 
       error: 'Email required',
       message: 'Could not determine customer email' 
@@ -198,6 +240,22 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
         eventType, 
         eventId 
       });
+      
+      // For customer.created events, this might be normal if the user hasn't signed up yet
+      if (eventType === 'customer.created') {
+        logger.info('Customer created event for user not in our system yet', {
+          email,
+          eventId
+        });
+        return res.status(200).json({ 
+          received: true,
+          eventType,
+          eventId,
+          processed: false,
+          reason: 'User not found in system yet'
+        });
+      }
+      
       return res.status(404).json({ 
         error: 'User not found',
         message: `No user found with email: ${email}` 
@@ -211,78 +269,30 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
       eventType
     });
 
-    // Use transaction.completed as the source of truth for all purchases
-    if (eventType === 'transaction.completed') {
-      const transaction = eventData;
-      
-      // Check for subscription details for recurring plans
-      if (transaction.subscription_id && transaction.billing_period) {
-        user.subscriptionStatus = 'active';
-        user.subscriptionEndsAt = new Date(transaction.billing_period.ends_at);
-        user.paddleSubscriptionId = transaction.subscription_id;
-        user.paddleTransactionId = transaction.id;
-        await user.save();
+    // Process different event types
+    switch (eventType) {
+      case 'transaction.completed':
+        await handleTransactionCompleted(user, eventData, planId);
+        break;
         
-        logger.info('Recurring plan activated', {
-          userId: user.id,
-          email,
-          subscriptionId: transaction.subscription_id,
-          endsAt: user.subscriptionEndsAt
-        });
-      }
-      // Handle one-time purchases (like lifetime)
-      else if (planId === 'lifetime') {
-        user.subscriptionStatus = 'active';
-        user.subscriptionEndsAt = new Date('2999-12-31T23:59:59Z');
-        user.paddleTransactionId = transaction.id;
-        await user.save();
+      case 'subscription.canceled':
+        await handleSubscriptionCanceled(user, eventData);
+        break;
         
-        logger.info('Lifetime plan activated', {
-          userId: user.id,
-          email,
-          transactionId: transaction.id
-        });
-      } else {
-        // Handle other one-time purchases
-        user.subscriptionStatus = 'active';
-        user.paddleTransactionId = transaction.id;
-        await user.save();
+      case 'transaction.created':
+        await handleTransactionCreated(user, eventData);
+        break;
         
-        logger.info('One-time purchase completed', {
-          userId: user.id,
-          email,
-          transactionId: transaction.id,
-          planId
+      case 'customer.created':
+        await handleCustomerCreated(user, eventData);
+        break;
+        
+      default:
+        logger.info('Unhandled webhook event type', { 
+          eventType,
+          eventId,
+          userId: user.id 
         });
-      }
-    } else if (eventType === 'subscription.canceled') {
-      const subscription = eventData;
-      user.subscriptionStatus = 'cancelled';
-      if (subscription.scheduled_change_at) {
-        user.subscriptionEndsAt = new Date(subscription.scheduled_change_at);
-      }
-      await user.save();
-      
-      logger.info('Subscription cancellation processed', {
-        userId: user.id,
-        email,
-        subscriptionId: subscription.id,
-        endsAt: user.subscriptionEndsAt
-      });
-    } else if (eventType === 'transaction.created') {
-      logger.info('Transaction created event received', {
-        userId: user.id,
-        email,
-        transactionId: eventData.id,
-        status: eventData.status
-      });
-      // You can add logic here if needed for transaction creation
-    } else {
-      logger.info('Unhandled webhook event type', { 
-        eventType,
-        eventId,
-        userId: user.id 
-      });
     }
 
     res.status(200).json({ 
@@ -304,5 +314,85 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
     return next(new AppError('Webhook processing failed', 500));
   }
 }));
+
+// Helper functions for handling different event types
+async function handleTransactionCompleted(user, transaction, planId) {
+  // Check for subscription details for recurring plans
+  if (transaction.subscription_id && transaction.billing_period) {
+    user.subscriptionStatus = 'active';
+    user.subscriptionEndsAt = new Date(transaction.billing_period.ends_at);
+    user.paddleSubscriptionId = transaction.subscription_id;
+    user.paddleTransactionId = transaction.id;
+    await user.save();
+    
+    logger.info('Recurring plan activated', {
+      userId: user.id,
+      email: user.email,
+      subscriptionId: transaction.subscription_id,
+      endsAt: user.subscriptionEndsAt
+    });
+  }
+  // Handle one-time purchases (like lifetime)
+  else if (planId === 'lifetime') {
+    user.subscriptionStatus = 'active';
+    user.subscriptionEndsAt = new Date('2999-12-31T23:59:59Z');
+    user.paddleTransactionId = transaction.id;
+    await user.save();
+    
+    logger.info('Lifetime plan activated', {
+      userId: user.id,
+      email: user.email,
+      transactionId: transaction.id
+    });
+  } else {
+    // Handle other one-time purchases
+    user.subscriptionStatus = 'active';
+    user.paddleTransactionId = transaction.id;
+    await user.save();
+    
+    logger.info('One-time purchase completed', {
+      userId: user.id,
+      email: user.email,
+      transactionId: transaction.id,
+      planId
+    });
+  }
+}
+
+async function handleSubscriptionCanceled(user, subscription) {
+  user.subscriptionStatus = 'cancelled';
+  if (subscription.scheduled_change_at) {
+    user.subscriptionEndsAt = new Date(subscription.scheduled_change_at);
+  }
+  await user.save();
+  
+  logger.info('Subscription cancellation processed', {
+    userId: user.id,
+    email: user.email,
+    subscriptionId: subscription.id,
+    endsAt: user.subscriptionEndsAt
+  });
+}
+
+async function handleTransactionCreated(user, transaction) {
+  logger.info('Transaction created event processed', {
+    userId: user.id,
+    email: user.email,
+    transactionId: transaction.id,
+    status: transaction.status
+  });
+  // You can add logic here if needed for transaction creation
+  // For now, we just log and acknowledge
+}
+
+async function handleCustomerCreated(user, customer) {
+  logger.info('Customer created event processed', {
+    userId: user.id,
+    email: user.email,
+    customerId: customer.id
+  });
+  // You can add logic here if needed for customer creation
+  // For now, we just log and acknowledge
+}
 
 export default router;
