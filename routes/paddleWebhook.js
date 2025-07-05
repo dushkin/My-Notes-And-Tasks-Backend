@@ -1,14 +1,16 @@
 import express from 'express';
 import crypto from 'crypto';
 import User from '../models/User.js';
-import axios from 'axios'; // Import axios to make API calls to Paddle
+import axios from 'axios';
+import logger from '../config/logger.js';
+import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
 
 const PADDLE_ENV = process.env.NODE_ENV === 'production' ? 'production' : 'sandbox';
 const PADDLE_BASE_URL = PADDLE_ENV === 'production'
     ? 'https://api.paddle.com'
     : 'https://sandbox-api.paddle.com';
 const PADDLE_API_KEY = process.env.PADDLE_API_KEY;
-const PADDLE_WEBHOOK_SECRET = process.env.PADDLE_WEBHOOK_SECRET;
+const PADDLE_WEBHOOK_SECRET_KEY = process.env.PADDLE_WEBHOOK_SECRET_KEY;
 
 const router = express.Router();
 
@@ -27,80 +29,192 @@ const getCustomerEmail = async (customerId) => {
     );
     return response.data?.data?.email || null;
   } catch (error) {
-    console.error(`[Paddle] Failed to fetch customer details for ${customerId}:`, error.response?.data || error.message);
+    logger.error(`Failed to fetch customer details for ${customerId}`, {
+      error: error.response?.data || error.message,
+      customerId
+    });
     return null;
   }
 };
 
-
-// Middleware to verify Paddle's webhook signature
+// Improved middleware to verify Paddle's webhook signature
 const verifyPaddleMiddleware = (req, res, next) => {
   const paddleSignature = req.headers['paddle-signature'];
-  const webhookSecret = PADDLE_WEBHOOK_SECRET;
+  const webhookSecret = PADDLE_WEBHOOK_SECRET_KEY;
 
-  if (!paddleSignature || !webhookSecret) {
-    console.warn('[Paddle] Missing signature or secret key.');
-    return res.status(400).send('Webhook signature or secret missing.');
+  logger.info('Verifying Paddle webhook signature', {
+    hasSignature: !!paddleSignature,
+    hasSecret: !!webhookSecret,
+    hasRawBody: !!req.rawBody,
+    rawBodyLength: req.rawBody?.length,
+    signaturePreview: paddleSignature ? paddleSignature.substring(0, 50) + '...' : 'none'
+  });
+
+  // If no webhook secret is configured, skip verification but log warning
+  if (!webhookSecret) {
+    logger.warn('PADDLE_WEBHOOK_SECRET_KEY not configured - skipping signature verification');
+    return next();
   }
 
-  const parts = paddleSignature.split(';');
-  const timestampStr = parts.find(part => part.startsWith('ts='))?.split('=')[1];
-  const signatureHex = parts.find(part => part.startsWith('h1='))?.split('=')[1];
-
-  if (!timestampStr || !signatureHex) {
-    return res.status(400).send('Invalid Paddle-Signature header format.');
+  if (!paddleSignature) {
+    logger.error('Paddle webhook signature missing', {
+      headers: Object.keys(req.headers),
+      contentType: req.headers['content-type']
+    });
+    return res.status(400).json({ 
+      error: 'Webhook signature missing',
+      message: 'Paddle-Signature header is required' 
+    });
   }
 
-  const timestamp = parseInt(timestampStr, 10);
-  const fiveMinutesInMillis = 5 * 60 * 1000;
-  if (Date.now() - (timestamp * 1000) > fiveMinutesInMillis) {
-    return res.status(400).send('Webhook timestamp too old.');
+  if (!req.rawBody) {
+    logger.error('Raw body missing for signature verification');
+    return res.status(400).json({ 
+      error: 'Raw body missing',
+      message: 'Unable to verify signature without raw body' 
+    });
   }
 
-  const signedPayload = `${timestampStr}:${req.rawBody}`;
-  const hmac = crypto.createHmac('sha256', webhookSecret);
-  hmac.update(signedPayload);
-  const computedSignature = hmac.digest('hex');
+  try {
+    const parts = paddleSignature.split(';');
+    const timestampStr = parts.find(part => part.startsWith('ts='))?.split('=')[1];
+    const signatureHex = parts.find(part => part.startsWith('h1='))?.split('=')[1];
 
-  if (crypto.timingSafeEqual(Buffer.from(computedSignature), Buffer.from(signatureHex))) {
-    next();
-  } else {
-    console.warn('[Paddle] Invalid webhook signature.');
-    return res.status(400).send('Invalid signature.');
+    if (!timestampStr || !signatureHex) {
+      logger.error('Invalid Paddle-Signature header format', { 
+        paddleSignature,
+        parts: parts.length 
+      });
+      return res.status(400).json({ 
+        error: 'Invalid signature format',
+        message: 'Expected format: ts=timestamp;h1=hash' 
+      });
+    }
+
+    const timestamp = parseInt(timestampStr, 10);
+    const fiveMinutesInMillis = 5 * 60 * 1000;
+    const timeDiff = Date.now() - (timestamp * 1000);
+    
+    if (timeDiff > fiveMinutesInMillis) {
+      logger.warn('Webhook timestamp too old', { 
+        timestamp, 
+        timeDiffMinutes: Math.round(timeDiff / (60 * 1000)) 
+      });
+      return res.status(400).json({ 
+        error: 'Timestamp too old',
+        message: 'Webhook must be processed within 5 minutes' 
+      });
+    }
+
+    const signedPayload = `${timestampStr}:${req.rawBody}`;
+    const hmac = crypto.createHmac('sha256', webhookSecret);
+    hmac.update(signedPayload);
+    const computedSignature = hmac.digest('hex');
+
+    // Use timingSafeEqual for secure comparison
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(computedSignature, 'hex'),
+      Buffer.from(signatureHex, 'hex')
+    );
+
+    if (isValid) {
+      logger.info('Paddle webhook signature verified successfully');
+      next();
+    } else {
+      logger.error('Invalid Paddle webhook signature', {
+        computedLength: computedSignature.length,
+        providedLength: signatureHex.length,
+        timestampStr,
+        payloadLength: req.rawBody.length
+      });
+      return res.status(400).json({ 
+        error: 'Invalid signature',
+        message: 'Signature verification failed' 
+      });
+    }
+  } catch (error) {
+    logger.error('Error during signature verification', {
+      error: error.message,
+      stack: error.stack
+    });
+    return res.status(500).json({ 
+      error: 'Signature verification error',
+      message: 'Internal error during verification' 
+    });
   }
 };
 
-router.post('/webhook', verifyPaddleMiddleware, async (req, res) => {
-  console.log('[Paddle] Received and verified webhook:', JSON.stringify(req.body, null, 2));
-
+router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next) => {
   const eventType = req.body.event_type;
-  let email = req.body.data?.customer?.email || null;
+  const eventId = req.body.event_id;
+  const eventData = req.body.data;
+
+  logger.info('Processing Paddle webhook', {
+    eventType,
+    eventId,
+    hasData: !!eventData,
+    customerId: eventData?.customer_id,
+    subscriptionId: eventData?.subscription_id,
+    transactionId: eventData?.id
+  });
+
+  let email = eventData?.customer?.email || null;
 
   // If email is not in the payload, try fetching it using the customer_id
-  if (!email && req.body.data?.customer_id) {
-    console.log(`[Paddle] Email not in payload, fetching from customer ID: ${req.body.data.customer_id}`);
-    email = await getCustomerEmail(req.body.data.customer_id);
+  if (!email && eventData?.customer_id) {
+    logger.info('Email not in payload, fetching from customer ID', { 
+      customerId: eventData.customer_id 
+    });
+    email = await getCustomerEmail(eventData.customer_id);
   }
 
-  const planId = req.body.data?.custom_data?.plan || null;
+  const planId = eventData?.custom_data?.plan || null;
 
-  console.log(`[Paddle] Event: ${eventType}, Email: ${email}, Plan: ${planId}`);
+  logger.info('Webhook details extracted', {
+    eventType,
+    email,
+    planId,
+    customerId: eventData?.customer_id
+  });
 
   if (!email) {
-    console.warn('[Paddle] Could not determine email from webhook payload or customer lookup.');
-    return res.status(400).send('Email could not be determined.');
+    logger.warn('Could not determine email from webhook payload or customer lookup', {
+      eventType,
+      eventId,
+      customerId: eventData?.customer_id,
+      hasCustomerObject: !!eventData?.customer
+    });
+    return res.status(400).json({ 
+      error: 'Email required',
+      message: 'Could not determine customer email' 
+    });
   }
 
   try {
     const user = await User.findOne({ email });
     if (!user) {
-      console.warn(`[Paddle] User not found: ${email}`);
-      return res.status(404).send('User not found');
+      logger.warn('User not found for webhook', { 
+        email, 
+        eventType, 
+        eventId 
+      });
+      return res.status(404).json({ 
+        error: 'User not found',
+        message: `No user found with email: ${email}` 
+      });
     }
+
+    logger.info('Processing webhook for user', {
+      userId: user.id,
+      email: user.email,
+      currentSubscriptionStatus: user.subscriptionStatus,
+      eventType
+    });
 
     // Use transaction.completed as the source of truth for all purchases
     if (eventType === 'transaction.completed') {
-      const transaction = req.body.data;
+      const transaction = eventData;
+      
       // Check for subscription details for recurring plans
       if (transaction.subscription_id && transaction.billing_period) {
         user.subscriptionStatus = 'active';
@@ -108,7 +222,13 @@ router.post('/webhook', verifyPaddleMiddleware, async (req, res) => {
         user.paddleSubscriptionId = transaction.subscription_id;
         user.paddleTransactionId = transaction.id;
         await user.save();
-        console.log(`[Paddle] Recurring plan activated for ${email}. Access until ${user.subscriptionEndsAt}`);
+        
+        logger.info('Recurring plan activated', {
+          userId: user.id,
+          email,
+          subscriptionId: transaction.subscription_id,
+          endsAt: user.subscriptionEndsAt
+        });
       }
       // Handle one-time purchases (like lifetime)
       else if (planId === 'lifetime') {
@@ -116,25 +236,73 @@ router.post('/webhook', verifyPaddleMiddleware, async (req, res) => {
         user.subscriptionEndsAt = new Date('2999-12-31T23:59:59Z');
         user.paddleTransactionId = transaction.id;
         await user.save();
-        console.log(`[Paddle] Lifetime plan activated for ${email}.`);
+        
+        logger.info('Lifetime plan activated', {
+          userId: user.id,
+          email,
+          transactionId: transaction.id
+        });
+      } else {
+        // Handle other one-time purchases
+        user.subscriptionStatus = 'active';
+        user.paddleTransactionId = transaction.id;
+        await user.save();
+        
+        logger.info('One-time purchase completed', {
+          userId: user.id,
+          email,
+          transactionId: transaction.id,
+          planId
+        });
       }
     } else if (eventType === 'subscription.canceled') {
-      const subscription = req.body.data;
+      const subscription = eventData;
       user.subscriptionStatus = 'cancelled';
       if (subscription.scheduled_change_at) {
         user.subscriptionEndsAt = new Date(subscription.scheduled_change_at);
       }
       await user.save();
-      console.log(`[Paddle] Subscription cancellation processed for ${email}. Access ends at ${user.subscriptionEndsAt}`);
+      
+      logger.info('Subscription cancellation processed', {
+        userId: user.id,
+        email,
+        subscriptionId: subscription.id,
+        endsAt: user.subscriptionEndsAt
+      });
+    } else if (eventType === 'transaction.created') {
+      logger.info('Transaction created event received', {
+        userId: user.id,
+        email,
+        transactionId: eventData.id,
+        status: eventData.status
+      });
+      // You can add logic here if needed for transaction creation
     } else {
-      console.log(`[Paddle] Unhandled but acknowledged event type: ${eventType}`);
+      logger.info('Unhandled webhook event type', { 
+        eventType,
+        eventId,
+        userId: user.id 
+      });
     }
 
-    res.status(200).send('OK');
+    res.status(200).json({ 
+      received: true,
+      eventType,
+      eventId,
+      processed: true 
+    });
+    
   } catch (err) {
-    console.error('[Paddle] Webhook processing error:', err);
-    res.status(500).send('Server error');
+    logger.error('Webhook processing error', {
+      error: err.message,
+      stack: err.stack,
+      eventType,
+      eventId,
+      email
+    });
+    
+    return next(new AppError('Webhook processing failed', 500));
   }
-});
+}));
 
 export default router;

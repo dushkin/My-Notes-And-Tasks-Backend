@@ -212,7 +212,6 @@ app.use((req, res, next) => {
     next();
 });
 
-// START OF MODIFICATION
 // Keep the raw body for webhook signature verification
 app.use(express.json({
     limit: '50mb',
@@ -223,7 +222,6 @@ app.use(express.json({
         }
     }
 }));
-// END OF MODIFICATION
 
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(mongoSanitize());
