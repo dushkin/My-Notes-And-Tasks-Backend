@@ -165,7 +165,11 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
     'address.created',
     'customer.created',
     'transaction.created',
-    'transaction.updated'
+    'transaction.updated',
+    'transaction.ready',
+    'transaction.paid',
+    'subscription.created',
+    'subscription.activated'
   ];
 
   // For events that don't require user processing, acknowledge immediately
