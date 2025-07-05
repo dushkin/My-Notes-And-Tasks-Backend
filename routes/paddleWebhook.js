@@ -157,7 +157,9 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
     customerId: eventData?.customer_id,
     subscriptionId: eventData?.subscription_id,
     transactionId: eventData?.id,
-    eventDataKeys: eventData ? Object.keys(eventData) : []
+    eventDataKeys: eventData ? Object.keys(eventData) : [],
+    // Add full payload for debugging transaction.completed
+    fullPayload: eventType === 'transaction.completed' ? JSON.stringify(eventData, null, 2) : 'not logged'
   });
 
   // Define events that don't require user processing
@@ -198,18 +200,59 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
       // For transaction events, try multiple ways to get the email
       email = eventData?.customer?.email || 
               eventData?.billing_details?.email || 
-              eventData?.checkout?.customer_email || 
+              eventData?.checkout?.customer_email ||
+              eventData?.customer_email ||
+              eventData?.billing?.email ||
+              eventData?.payer?.email ||
               null;
+              
+      logger.info('Email extraction attempt for transaction.completed', {
+        customerEmail: eventData?.customer?.email,
+        billingEmail: eventData?.billing_details?.email,
+        checkoutEmail: eventData?.checkout?.customer_email,
+        directEmail: eventData?.customer_email,
+        billingEmail2: eventData?.billing?.email,
+        payerEmail: eventData?.payer?.email,
+        customerId: eventData?.customer_id,
+        foundEmail: email
+      });
+      
       if (!email && eventData?.customer_id) {
+        logger.info('Attempting to fetch customer email from API', {
+          customerId: eventData.customer_id
+        });
         email = await getCustomerEmail(eventData.customer_id);
       }
+      
       // If still no email, try looking in items or other nested objects
       if (!email && eventData?.items) {
         for (const item of eventData.items) {
           if (item?.customer?.email) {
             email = item.customer.email;
+            logger.info('Found email in items array', { email });
             break;
           }
+        }
+      }
+      
+      // Try looking in any nested objects
+      if (!email && eventData) {
+        const searchForEmail = (obj, path = '') => {
+          for (const [key, value] of Object.entries(obj)) {
+            if (key === 'email' && typeof value === 'string' && value.includes('@')) {
+              logger.info(`Found email at path: ${path}.${key}`, { email: value });
+              return value;
+            }
+            if (typeof value === 'object' && value !== null) {
+              const found = searchForEmail(value, `${path}.${key}`);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        
+        if (!email) {
+          email = searchForEmail(eventData);
         }
       }
       break;
@@ -244,7 +287,8 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
       eventId,
       customerId: eventData?.customer_id,
       hasCustomerObject: !!eventData?.customer,
-      eventDataKeys: Object.keys(eventData || {})
+      eventDataKeys: Object.keys(eventData || {}),
+      isSimulation: eventId?.includes('ntfsimevt_') || false
     });
     
     // For transaction.completed, try to find user by paddle transaction ID or subscription ID
@@ -278,6 +322,23 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
           eventId,
           processed: true,
           message: 'User found by paddle ID'
+        });
+      }
+      
+      // If this is a simulation event, we can acknowledge it without processing
+      if (eventId?.includes('ntfsimevt_')) {
+        logger.info('Acknowledging simulation transaction.completed without user processing', {
+          eventType,
+          eventId,
+          reason: 'Simulation event - no email available'
+        });
+        
+        return res.status(200).json({ 
+          received: true,
+          eventType,
+          eventId,
+          processed: false,
+          message: 'Simulation event acknowledged - no user processing'
         });
       }
       
