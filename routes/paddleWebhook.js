@@ -31,7 +31,8 @@ const getCustomerEmail = async (customerId) => {
   } catch (error) {
     logger.error(`Failed to fetch customer details for ${customerId}`, {
       error: error.response?.data || error.message,
-      customerId
+      customerId,
+      statusCode: error.response?.status
     });
     return null;
   }
@@ -159,32 +160,39 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
     eventDataKeys: eventData ? Object.keys(eventData) : []
   });
 
+  // Define events that don't require user processing
+  const skipUserProcessingEvents = [
+    'address.created',
+    'customer.created',
+    'transaction.created'
+  ];
+
+  // For events that don't require user processing, acknowledge immediately
+  if (skipUserProcessingEvents.includes(eventType)) {
+    logger.info('Acknowledging event without user processing', {
+      eventType,
+      eventId,
+      customerId: eventData?.customer_id
+    });
+    
+    return res.status(200).json({ 
+      received: true,
+      eventType,
+      eventId,
+      processed: true,
+      message: 'Event acknowledged - no user processing required'
+    });
+  }
+
   let email = null;
 
   // Handle different event types and their payload structures
   switch (eventType) {
-    case 'transaction.created':
     case 'transaction.completed':
       // For transaction events, email might be in customer object or we need to fetch it
       email = eventData?.customer?.email || null;
       if (!email && eventData?.customer_id) {
         email = await getCustomerEmail(eventData.customer_id);
-      }
-      break;
-      
-    case 'customer.created':
-      // For customer events, email should be directly in the event data
-      email = eventData?.email || null;
-      break;
-      
-    case 'address.created':
-      // For address events, we need to fetch customer details
-      if (eventData?.customer_id) {
-        email = await getCustomerEmail(eventData.customer_id);
-      }
-      // Address events might not have customer_id directly, check other fields
-      if (!email && eventData?.customer) {
-        email = eventData.customer.email;
       }
       break;
       
@@ -212,10 +220,8 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
     customerId: eventData?.customer_id
   });
 
-  // For some events, we might not need to process them immediately
-  // or they might not require a user lookup
   if (!email) {
-    logger.warn('Could not determine email from webhook payload or customer lookup', {
+    logger.error('Could not determine email from webhook payload or customer lookup', {
       eventType,
       eventId,
       customerId: eventData?.customer_id,
@@ -223,24 +229,11 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
       eventDataKeys: Object.keys(eventData || {})
     });
     
-    // For certain events, we can acknowledge without processing
-    if (['transaction.created', 'customer.created'].includes(eventType)) {
-      logger.info('Acknowledging event without processing due to missing email', {
-        eventType,
-        eventId
-      });
-      return res.status(200).json({ 
-        received: true,
-        eventType,
-        eventId,
-        processed: false,
-        reason: 'Email not available for this event type'
-      });
-    }
-    
     return res.status(400).json({ 
       error: 'Email required',
-      message: 'Could not determine customer email' 
+      message: 'Could not determine customer email',
+      eventType,
+      eventId
     });
   }
 
@@ -253,24 +246,11 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
         eventId 
       });
       
-      // For customer.created events, this might be normal if the user hasn't signed up yet
-      if (eventType === 'customer.created') {
-        logger.info('Customer created event for user not in our system yet', {
-          email,
-          eventId
-        });
-        return res.status(200).json({ 
-          received: true,
-          eventType,
-          eventId,
-          processed: false,
-          reason: 'User not found in system yet'
-        });
-      }
-      
       return res.status(404).json({ 
         error: 'User not found',
-        message: `No user found with email: ${email}` 
+        message: `No user found with email: ${email}`,
+        eventType,
+        eventId
       });
     }
 
@@ -289,18 +269,6 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
         
       case 'subscription.canceled':
         await handleSubscriptionCanceled(user, eventData);
-        break;
-        
-      case 'transaction.created':
-        await handleTransactionCreated(user, eventData);
-        break;
-        
-      case 'customer.created':
-        await handleCustomerCreated(user, eventData);
-        break;
-        
-      case 'address.created':
-        await handleAddressCreated(user, eventData);
         break;
         
       default:
@@ -388,37 +356,6 @@ async function handleSubscriptionCanceled(user, subscription) {
     subscriptionId: subscription.id,
     endsAt: user.subscriptionEndsAt
   });
-}
-
-async function handleTransactionCreated(user, transaction) {
-  logger.info('Transaction created event processed', {
-    userId: user.id,
-    email: user.email,
-    transactionId: transaction.id,
-    status: transaction.status
-  });
-  // You can add logic here if needed for transaction creation
-  // For now, we just log and acknowledge
-}
-
-async function handleCustomerCreated(user, customer) {
-  logger.info('Customer created event processed', {
-    userId: user.id,
-    email: user.email,
-    customerId: customer.id
-  });
-  // You can add logic here if needed for customer creation
-  // For now, we just log and acknowledge
-}
-
-async function handleAddressCreated(user, address) {
-  logger.info('Address created event processed', {
-    userId: user.id,
-    email: user.email,
-    addressId: address.id
-  });
-  // You can add logic here if needed for address creation
-  // For now, we just log and acknowledge
 }
 
 export default router;
