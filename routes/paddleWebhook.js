@@ -169,7 +169,8 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
     'transaction.ready',
     'transaction.paid',
     'subscription.created',
-    'subscription.activated'
+    'subscription.activated',
+    'payment_method.saved'
   ];
 
   // For events that don't require user processing, acknowledge immediately
@@ -194,10 +195,22 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
   // Handle different event types and their payload structures
   switch (eventType) {
     case 'transaction.completed':
-      // For transaction events, email might be in customer object or we need to fetch it
-      email = eventData?.customer?.email || null;
+      // For transaction events, try multiple ways to get the email
+      email = eventData?.customer?.email || 
+              eventData?.billing_details?.email || 
+              eventData?.checkout?.customer_email || 
+              null;
       if (!email && eventData?.customer_id) {
         email = await getCustomerEmail(eventData.customer_id);
+      }
+      // If still no email, try looking in items or other nested objects
+      if (!email && eventData?.items) {
+        for (const item of eventData.items) {
+          if (item?.customer?.email) {
+            email = item.customer.email;
+            break;
+          }
+        }
       }
       break;
       
@@ -233,6 +246,48 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
       hasCustomerObject: !!eventData?.customer,
       eventDataKeys: Object.keys(eventData || {})
     });
+    
+    // For transaction.completed, try to find user by paddle transaction ID or subscription ID
+    if (eventType === 'transaction.completed') {
+      let user = null;
+      
+      // Try to find user by transaction ID
+      if (eventData?.id) {
+        user = await User.findOne({ paddleTransactionId: eventData.id });
+      }
+      
+      // Try to find user by subscription ID
+      if (!user && eventData?.subscription_id) {
+        user = await User.findOne({ paddleSubscriptionId: eventData.subscription_id });
+      }
+      
+      if (user) {
+        logger.info('Found user by paddle ID for transaction.completed', {
+          userId: user.id,
+          email: user.email,
+          transactionId: eventData.id,
+          subscriptionId: eventData.subscription_id
+        });
+        
+        // Process the transaction for this user
+        await handleTransactionCompleted(user, eventData, planId);
+        
+        return res.status(200).json({ 
+          received: true,
+          eventType,
+          eventId,
+          processed: true,
+          message: 'User found by paddle ID'
+        });
+      }
+      
+      logger.warn('Could not find user by email or paddle IDs for transaction.completed', {
+        eventType,
+        eventId,
+        transactionId: eventData?.id,
+        subscriptionId: eventData?.subscription_id
+      });
+    }
     
     return res.status(400).json({ 
       error: 'Email required',
