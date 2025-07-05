@@ -176,6 +176,13 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
       email = eventData?.email || null;
       break;
       
+    case 'address.created':
+      // For address events, we need to fetch customer details
+      if (eventData?.customer_id) {
+        email = await getCustomerEmail(eventData.customer_id);
+      }
+      break;
+      
     case 'subscription.canceled':
       // For subscription events, we might need to fetch customer details
       if (eventData?.customer_id) {
@@ -287,6 +294,10 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
         await handleCustomerCreated(user, eventData);
         break;
         
+      case 'address.created':
+        await handleAddressCreated(user, eventData);
+        break;
+        
       default:
         logger.info('Unhandled webhook event type', { 
           eventType,
@@ -392,6 +403,16 @@ async function handleCustomerCreated(user, customer) {
     customerId: customer.id
   });
   // You can add logic here if needed for customer creation
+  // For now, we just log and acknowledge
+}
+
+async function handleAddressCreated(user, address) {
+  logger.info('Address created event processed', {
+    userId: user.id,
+    email: user.email,
+    addressId: address.id
+  });
+  // You can add logic here if needed for address creation
   // For now, we just log and acknowledge
 }
 
