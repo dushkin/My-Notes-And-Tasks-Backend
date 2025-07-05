@@ -164,7 +164,8 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
   const skipUserProcessingEvents = [
     'address.created',
     'customer.created',
-    'transaction.created'
+    'transaction.created',
+    'transaction.updated'
   ];
 
   // For events that don't require user processing, acknowledge immediately
