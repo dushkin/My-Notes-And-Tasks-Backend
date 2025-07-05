@@ -155,7 +155,8 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
     hasData: !!eventData,
     customerId: eventData?.customer_id,
     subscriptionId: eventData?.subscription_id,
-    transactionId: eventData?.id
+    transactionId: eventData?.id,
+    eventDataKeys: eventData ? Object.keys(eventData) : []
   });
 
   let email = null;
@@ -180,6 +181,10 @@ router.post('/webhook', verifyPaddleMiddleware, catchAsync(async (req, res, next
       // For address events, we need to fetch customer details
       if (eventData?.customer_id) {
         email = await getCustomerEmail(eventData.customer_id);
+      }
+      // Address events might not have customer_id directly, check other fields
+      if (!email && eventData?.customer) {
+        email = eventData.customer.email;
       }
       break;
       
