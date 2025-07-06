@@ -10,7 +10,6 @@ handleUncaughtException();
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
-import helmet from 'helmet';
 import mongoSanitize from 'express-mongo-sanitize';
 import xssCleanModule from 'xss-clean';
 const xss = typeof xssCleanModule === 'function' ? xssCleanModule : xssCleanModule.default;
@@ -21,7 +20,7 @@ import { fileURLToPath } from 'url';
 import axios from 'axios';
 import authMiddleware from './middleware/authMiddleware.js';
 import { catchAsync, AppError } from './middleware/errorHandlerMiddleware.js';
-
+import securityHeaders from './middleware/securityHeadersMiddleware.js';
 import { generalLimiter } from './middleware/rateLimiterMiddleware.js';
 import imageCorsMiddleware from './middleware/imageCorsMiddleware.js';
 import logger from './config/logger.js';
@@ -131,36 +130,6 @@ function initializeScheduledTasks() {
     }
 }
 
-app.use(helmet({
-    contentSecurityPolicy: {
-        directives: {
-            "default-src": ["'self'"],
-            "script-src": [
-                "'self'",
-                "'unsafe-inline'",
-                "'unsafe-eval'",
-                "https://cdn.paddle.com",
-                "https://sandbox-buy.paddle.com"
-            ],
-            "frame-src": [
-                "'self'",
-                "https://sandbox-buy.paddle.com",
-                "https://buy.paddle.com"
-            ],
-            "connect-src": [
-                "'self'",
-                "http://localhost:5001",
-                "https://my-notes-and-tasks-backend.onrender.com",
-                "https://checkout.paddle.com",
-                "https://checkout-service.paddle.com",
-                "https://sandbox-checkout-service.paddle.com"
-            ],
-            "img-src": ["'self'", "data:", "https:"],
-            "style-src": ["'self'", "'unsafe-inline'"]
-        },
-    },
-    crossOriginEmbedderPolicy: false
-}));
 const allowedOriginsStr = process.env.ALLOWED_ORIGINS || '';
 const allowedOriginsList = allowedOriginsStr ? allowedOriginsStr.split(',').map(origin => origin.trim()) : '*';
 const corsOptions = {
@@ -233,6 +202,8 @@ if (typeof xss === 'function') {
 app.use(hpp({ whitelist: ['sort', 'fields', 'page', 'limit'] }));
 app.use(compression());
 app.use('/api/', generalLimiter);
+
+app.use(securityHeaders);
 
 const publicUploadsPath = path.join(__dirname, 'public', 'Uploads');
 app.use('/uploads', imageCorsMiddleware);

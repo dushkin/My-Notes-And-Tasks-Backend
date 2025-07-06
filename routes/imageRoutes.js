@@ -5,7 +5,7 @@ import fs from 'fs';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
-import { fileTypeFromFile } from 'file-type'; 
+import { fileTypeFromFile } from 'file-type';
 import { header, check, validationResult } from 'express-validator';
 
 import authMiddleware from '../middleware/authMiddleware.js';
@@ -90,7 +90,7 @@ const fileFilter = (req, file, cb) => {
 
 const scanFile = async (filePath) => {
   logger.debug('Starting simplified file security scan', { filePath });
-  
+
   try {
     // 1. File type validation using file-type library
     const ft = await fileTypeFromFile(filePath);
@@ -103,17 +103,17 @@ const scanFile = async (filePath) => {
     // 2. Basic magic byte validation
     const buffer = fs.readFileSync(filePath);
     const jpegHeader = buffer.slice(0, 3).toString('hex') === 'ffd8ff';
-    const pngHeader  = buffer.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
-    const gifHeader  = ['GIF87a','GIF89a'].includes(buffer.slice(0,6).toString('ascii'));
-    const webpHeader = buffer.slice(0,4).toString('ascii') === 'RIFF' && buffer.slice(8,12).toString('ascii') === 'WEBP';
+    const pngHeader = buffer.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
+    const gifHeader = ['GIF87a', 'GIF89a'].includes(buffer.slice(0, 6).toString('ascii'));
+    const webpHeader = buffer.slice(0, 4).toString('ascii') === 'RIFF' && buffer.slice(8, 12).toString('ascii') === 'WEBP';
     const ext = path.extname(filePath).toLowerCase();
-    
+
     let valid = false;
     if ((ext === '.jpg' || ext === '.jpeg') && jpegHeader) valid = true;
     else if (ext === '.png' && pngHeader) valid = true;
     else if (ext === '.gif' && gifHeader) valid = true;
     else if (ext === '.webp' && webpHeader) valid = true;
-    
+
     if (!valid) {
       logger.warn('Magic-byte check failed', { filePath, ext });
       throw new AppError(`Invalid ${ext.substring(1).toUpperCase()} file based on content.`, 400);
@@ -181,7 +181,7 @@ const processImageAndLog = async (filePath, originalName, userId) => {
   } catch (err) {
     logger.error('Image processing exception', { userId, originalName, filePath, message: err.message });
     if (fs.existsSync(filePath)) {
-      try { fs.unlinkSync(filePath); } catch {/* ignore cleanup errors */}
+      try { fs.unlinkSync(filePath); } catch {/* ignore cleanup errors */ }
     }
     if (err instanceof AppError) throw err;
     throw new AppError(`Image processing failed: ${err.message}`, 500);
@@ -203,7 +203,7 @@ const imageUploadValidations = [
       }
       return true;
     }),
-  
+
   check().custom((value, { req }) => {
     // This will be checked after multer processes the file
     return true;
@@ -294,7 +294,12 @@ router.post(
 
     const info = await processImageAndLog(req.file.path, req.file.originalname, userId);
     const filename = req.file.filename;
+
     let baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+    if (baseUrl.startsWith('http://') && process.env.NODE_ENV === 'production') {
+      baseUrl = baseUrl.replace('http://', 'https://');
+    }
+
     res.status(201).json({
       url: `${baseUrl}/uploads/images/${filename}`,
       metadata: info
