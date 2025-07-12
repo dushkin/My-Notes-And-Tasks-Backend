@@ -343,8 +343,8 @@ try {
     app.use('/api/account', accountRoutes);
     app.use('/api/meta', metaRoutes);
     app.use('/api/paddle', paddleWebhook);
-    app.use('/api/subscriptions', subscriptionRoutes);
-    app.use('/api/user', userRoutes);
+    // app.use('/api/subscriptions', subscriptionRoutes);
+    // app.use('/api/user', userRoutes);
 
     checkModule(authRoutes, 'authRoutes');
     checkModule(itemsRoutes, 'itemsRoutes');
