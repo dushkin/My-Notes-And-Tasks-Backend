@@ -1,13 +1,13 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.5.12",
-  "commitMessage": "Fixed image paste issue",
+  "version": "5.5.13",
+  "commitMessage": "Added https://localhost:5173 to allowed CORS",
   "description": "",
   "main": "server.js",
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
+    "dev": "nodemon --ignore 'logs/*' server.js",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules NODE_ENV=test jest --testTimeout=10000 --runInBand",
     "beta:check": "node -e \"const User = require('./models/User'); const mongoose = require('mongoose'); mongoose.connect(process.env.MONGODB_URI).then(async () => { const count = await User.countDocuments(); console.log('Current users:', count); process.exit(0); });\"",
     "beta:reset": "node -e \"const User = require('./models/User'); const mongoose = require('mongoose'); mongoose.connect(process.env.MONGODB_URI).then(async () => { const result = await User.deleteMany({}); console.log('Deleted users:', result.deletedCount); process.exit(0); });\"",

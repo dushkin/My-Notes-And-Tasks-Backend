@@ -25,7 +25,6 @@ import { generalLimiter } from './middleware/rateLimiterMiddleware.js';
 import imageCorsMiddleware from './middleware/imageCorsMiddleware.js';
 import logger from './config/logger.js';
 import scheduledTasksService from './services/scheduledTasksService.js';
-
 import authRoutes from './routes/authRoutes.js';
 import itemsRoutes from './routes/itemsRoutes.js';
 import imageRoutes from './routes/imageRoutes.js';
@@ -64,8 +63,10 @@ logger.debug('Environment Variables Check', {
     BETA_USER_LIMIT: process.env.BETA_USER_LIMIT ? 'Set' : 'Not Set (default: 50)',
     ENABLE_SCHEDULED_TASKS: process.env.ENABLE_SCHEDULED_TASKS ? 'Set' : 'Not Set (default: true)',
     ORPHANED_IMAGE_CLEANUP_SCHEDULE: process.env.ORPHANED_IMAGE_CLEANUP_SCHEDULE ? 'Set' : 'Not Set (default: 0 2 * * *)',
-    EXPIRED_TOKEN_CLEANUP_SCHEDULE: process.env.EXPIRED_TOKEN_CLEANUP_SCHEDULE ? 'Set' : 'Not Set (default: 0 */6 * * *)',
-    CRON_TIMEZONE: process.env.CRON_TIMEZONE ? 'Set' : 'Not Set (default: UTC)'
+    EXPIRED_TOKEN_CLEANUP_SCHEDULE: process.env.EXPIRED_TOKEN_CLEANUP_SCHEDULE ?
+        'Set' : 'Not Set (default: 0 */6 * * *)',
+    CRON_TIMEZONE: process.env.CRON_TIMEZONE ?
+        'Set' : 'Not Set (default: UTC)'
 });
 
 const isTestEnv = process.env.NODE_ENV === 'test';
@@ -130,8 +131,11 @@ function initializeScheduledTasks() {
     }
 }
 
-const allowedOriginsStr = process.env.ALLOWED_ORIGINS || '';
-const allowedOriginsList = allowedOriginsStr ? allowedOriginsStr.split(',').map(origin => origin.trim()) : '*';
+const allowedOriginsStr = process.env.ALLOWED_ORIGINS || 'http://localhost:5173,https://localhost:5173';
+// if user set ALLOWED_ORIGINS="*", treat it as wildcard
+const allowedOriginsList = allowedOriginsStr.trim() === '*'
+    ? '*'
+    : allowedOriginsStr.split(',').map(orig => orig.trim());
 const corsOptions = {
     origin: (origin, callback) => {
         if (!origin) return callback(null, true);
@@ -180,7 +184,6 @@ app.use((req, res, next) => {
     });
     next();
 });
-
 // Keep the raw body for webhook signature verification
 app.use(express.json({
     limit: '50mb',
@@ -191,7 +194,6 @@ app.use(express.json({
         }
     }
 }));
-
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(mongoSanitize());
 if (typeof xss === 'function') {
@@ -222,13 +224,11 @@ logger.info('Static file serving configured for /uploads', {
     path: publicUploadsPath,
     corsEnabled: true
 });
-
 // Paddle environment and base URL (dynamic between sandbox and live)
 const PADDLE_ENV = process.env.NODE_ENV === 'production' ? 'production' : 'sandbox';
 const PADDLE_BASE_URL = PADDLE_ENV === 'production'
     ? 'https://api.paddle.com'
     : 'https://sandbox-api.paddle.com';
-
 app.post(
     '/api/paddle/create-transaction',
     authMiddleware,
@@ -278,13 +278,11 @@ app.post(
                     }
                 }
             );
-
             logger.info('Paddle transaction created', {
                 userId,
                 transactionId: response.data.data.id,
                 requestId,
             });
-
             return res.status(200).json({ transactionId: response.data.data.id });
         } catch (err) {
             logger.error('Paddle transaction creation failed', {
@@ -427,6 +425,7 @@ const shutdown = async (signal) => {
                     logger.info('MongoDB connection already closed or not established at shutdown.');
                 }
             } catch (err) {
+
                 logger.error('Error closing MongoDB connection during shutdown:', { message: err.message });
             } finally {
                 logger.info('Shutdown complete.');
