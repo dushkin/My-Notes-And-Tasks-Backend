@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "6.0.0",
-  "commitMessage": "Support server-side push notifications and ringtones",
+  "version": "6.0.1",
+  "commitMessage": "Some fixes",
   "description": "",
   "main": "server.js",
   "type": "module",

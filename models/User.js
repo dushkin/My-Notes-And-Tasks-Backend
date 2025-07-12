@@ -29,6 +29,7 @@ const userSchema = new Schema({
             reminderSoundEnabled: { type: Boolean, default: true },
             reminderVibrationEnabled: { type: Boolean, default: true },
             reminderSoundUrl: { type: String, default: '/sounds/default-tone.mp3' },
+  showCloseButtonOnNotification: { type: Boolean, default: false },
         },
         default: () => ({
             theme: 'system',

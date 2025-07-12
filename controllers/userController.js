@@ -12,7 +12,8 @@ export const updateUserSettings = catchAsync(async (req, res, next) => {
         'theme', 
         'reminderSoundEnabled', 
         'reminderVibrationEnabled', 
-        'reminderSoundUrl'
+        'reminderSoundUrl',
+        'showCloseButtonOnNotification'
         // Add other frontend-configurable settings here in the future
     ];
 
