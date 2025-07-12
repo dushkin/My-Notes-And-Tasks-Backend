@@ -331,3 +331,39 @@ export const moveItem = catchAsync(async (req, res, next) => {
   await user.save();
   res.status(200).json({ status: 'success', data: { movedItem: itemToMove } });
 });
+
+export const completeTaskHandler = catchAsync(async (req, res, next) => {
+  const userId = req.user.id;
+  const { taskId } = req.params;
+
+  const user = await User.findById(userId);
+  if (!user || !user.notesTree) {
+    return next(new AppError("User or notes tree not found", 404));
+  }
+
+  const markAsComplete = (nodes) => {
+    for (let node of nodes) {
+      if (node.id === taskId) {
+        if (node.type === "task") {
+          node.completed = true;
+          node.updatedAt = new Date();
+          return true;
+        }
+      }
+      if (node.children && markAsComplete(node.children)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const success = markAsComplete(user.notesTree);
+  if (!success) {
+    return next(new AppError("Task not found", 404));
+  }
+
+  await user.save();
+  logger.info("Task completed via notification", { userId, taskId });
+
+  res.status(200).json({ message: "Task marked as completed" });
+});

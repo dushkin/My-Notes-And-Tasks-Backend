@@ -20,6 +20,8 @@ import logger from '../config/logger.js';
 const router = express.Router();
 
 router.use(authMiddleware);
+import { completeTaskHandler } from '../controllers/itemsController.js';
+router.patch('/tasks/:taskId/complete', completeTaskHandler);
 
 // Validation middleware
 const validate = (req, res, next) => {
