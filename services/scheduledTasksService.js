@@ -17,7 +17,7 @@ class ScheduledTasksService {
     init() {
         logger.info('Initializing scheduled tasks service...');
         try {
-            this.scheduleReminderProcessing(); // Add this
+            // this.scheduleReminderProcessing();
             this.scheduleOrphanedImageCleanup();
             this.scheduleExpiredTokenCleanup();
             this.scheduleHealthChecks();
