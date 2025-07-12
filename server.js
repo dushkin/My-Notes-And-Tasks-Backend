@@ -206,7 +206,7 @@ app.use(hpp({ whitelist: ['sort', 'fields', 'page', 'limit'] }));
 app.use(compression());
 app.use('/api/', generalLimiter);
 
-app.use(securityHeaders);
+// app.use(securityHeaders);
 
 const publicUploadsPath = path.join(__dirname, 'public', 'Uploads');
 app.use('/uploads', imageCorsMiddleware);
