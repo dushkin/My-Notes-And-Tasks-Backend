@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "5.5.13",
-  "commitMessage": "Added https://localhost:5173 to allowed CORS",
+  "version": "6.0.0",
+  "commitMessage": "Support server-side push notifications and ringtones",
   "description": "",
   "main": "server.js",
   "type": "module",
@@ -42,6 +42,7 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^11.1.0",
+    "web-push": "^3.6.7",
     "winston": "^3.17.0",
     "xss-clean": "^0.1.4"
   },

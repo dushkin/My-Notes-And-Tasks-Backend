@@ -2,6 +2,7 @@
 import cron from 'node-cron';
 import { cleanupOrphanedImages } from './orphanedFileCleanupService.js';
 import { cleanupExpiredTokens } from '../utils/jwt.js';
+import { processReminders } from './reminderService.js'; // Import the new service
 import logger from '../config/logger.js';
 
 class ScheduledTasksService {
@@ -15,12 +16,11 @@ class ScheduledTasksService {
      */
     init() {
         logger.info('Initializing scheduled tasks service...');
-        
         try {
+            this.scheduleReminderProcessing(); // Add this
             this.scheduleOrphanedImageCleanup();
             this.scheduleExpiredTokenCleanup();
             this.scheduleHealthChecks();
-            
             logger.info('All scheduled tasks initialized successfully', {
                 activeTasks: this.tasks.size,
                 taskNames: Array.from(this.tasks.keys())
@@ -33,6 +33,50 @@ class ScheduledTasksService {
             throw error;
         }
     }
+
+    /**
+     * Schedule reminder processing
+     * Runs every minute to check for and send due reminders
+     */
+    scheduleReminderProcessing() {
+        const taskName = 'reminder-processing';
+        const schedule = '* * * * *'; // Every minute
+
+        const task = cron.schedule(schedule, async () => {
+            if (this.isShuttingDown) return;
+            const jobId = `${taskName}-${Date.now()}`;
+            logger.info(`Starting scheduled task: ${taskName}`, { jobId, schedule });
+            try {
+                await processReminders();
+                logger.info(`Completed scheduled task: ${taskName}`, { jobId });
+            } catch (error) {
+                logger.error(`Failed scheduled task: ${taskName}`, {
+                    jobId,
+                    error: error.message,
+                    stack: error.stack
+                });
+            }
+        }, {
+            scheduled: false,
+            timezone: process.env.CRON_TIMEZONE || 'UTC'
+        });
+
+        this.tasks.set(taskName, {
+            task,
+            schedule,
+            description: 'Process and send due date reminders',
+            lastRun: null,
+            enabled: true
+        });
+
+        if (this.tasks.get(taskName).enabled) {
+            task.start();
+            logger.info(`Scheduled task started: ${taskName}`, { schedule });
+        } else {
+            logger.info(`Scheduled task disabled: ${taskName}`);
+        }
+    }
+
 
     /**
      * Schedule orphaned image cleanup
@@ -185,7 +229,6 @@ class ScheduledTasksService {
             nodeVersion: process.version,
             environment: process.env.NODE_ENV
         };
-
         // Add MongoDB connection status if available
         try {
             const mongoose = await import('mongoose');
@@ -212,7 +255,6 @@ class ScheduledTasksService {
         }
 
         logger.info(`Manually triggering task: ${taskName}`);
-        
         switch (taskName) {
             case 'orphaned-image-cleanup':
                 return await cleanupOrphanedImages();
@@ -230,7 +272,6 @@ class ScheduledTasksService {
      */
     getTasksStatus() {
         const status = {};
-        
         for (const [name, info] of this.tasks.entries()) {
             status[name] = {
                 schedule: info.schedule,
@@ -294,7 +335,6 @@ class ScheduledTasksService {
 
         // Wait a moment for any running tasks to complete
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
         this.tasks.clear();
         logger.info('Scheduled tasks service shutdown complete');
     }

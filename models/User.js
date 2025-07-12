@@ -22,6 +22,21 @@ const userSchema = new Schema({
         enum: ['user', 'admin'],
         default: 'user'
     },
+    // Notification and other preferences
+    settings: {
+        type: {
+            theme: { type: String, default: 'system' },
+            reminderSoundEnabled: { type: Boolean, default: true },
+            reminderVibrationEnabled: { type: Boolean, default: true },
+            reminderSoundUrl: { type: String, default: '/sounds/default-tone.mp3' },
+        },
+        default: () => ({
+            theme: 'system',
+            reminderSoundEnabled: true,
+            reminderVibrationEnabled: true,
+            reminderSoundUrl: '/sounds/default-tone.mp3',
+        })
+    },
     subscriptionStatus: {
         type: String,
         enum: ['active', 'cancelled', 'past_due', 'none'],
@@ -40,7 +55,7 @@ const userSchema = new Schema({
         trim: true
     },
     isVerified: {
-        type: Boolean,
+      type: Boolean,
         default: false
     },
     

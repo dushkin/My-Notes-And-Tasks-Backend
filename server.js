@@ -32,6 +32,9 @@ import accountRoutes from './routes/accountRoutes.js';
 import metaRoutes from './routes/metaRoutes.js';
 import paddleWebhook from './routes/paddleWebhook.js';
 import adminRoutes from './routes/adminRoutes.js';
+import subscriptionRoutes from './routes/subscriptionRoutes.js';
+import userRoutes from './routes/userRoutes.js';
+
 process.on('uncaughtException', (err) => {
     console.error('UNCAUGHT EXCEPTION DETAILS:');
     console.error('Error name:', err.name);
@@ -63,10 +66,8 @@ logger.debug('Environment Variables Check', {
     BETA_USER_LIMIT: process.env.BETA_USER_LIMIT ? 'Set' : 'Not Set (default: 50)',
     ENABLE_SCHEDULED_TASKS: process.env.ENABLE_SCHEDULED_TASKS ? 'Set' : 'Not Set (default: true)',
     ORPHANED_IMAGE_CLEANUP_SCHEDULE: process.env.ORPHANED_IMAGE_CLEANUP_SCHEDULE ? 'Set' : 'Not Set (default: 0 2 * * *)',
-    EXPIRED_TOKEN_CLEANUP_SCHEDULE: process.env.EXPIRED_TOKEN_CLEANUP_SCHEDULE ?
-        'Set' : 'Not Set (default: 0 */6 * * *)',
-    CRON_TIMEZONE: process.env.CRON_TIMEZONE ?
-        'Set' : 'Not Set (default: UTC)'
+    EXPIRED_TOKEN_CLEANUP_SCHEDULE: process.env.EXPIRED_TOKEN_CLEANUP_SCHEDULE ? 'Set' : 'Not Set (default: 0 */6 * * *)',
+    CRON_TIMEZONE: process.env.CRON_TIMEZONE ? 'Set' : 'Not Set (default: UTC)'
 });
 
 const isTestEnv = process.env.NODE_ENV === 'test';
@@ -342,6 +343,8 @@ try {
     app.use('/api/account', accountRoutes);
     app.use('/api/meta', metaRoutes);
     app.use('/api/paddle', paddleWebhook);
+    app.use('/api/subscriptions', subscriptionRoutes);
+    app.use('/api/user', userRoutes);
 
     checkModule(authRoutes, 'authRoutes');
     checkModule(itemsRoutes, 'itemsRoutes');
@@ -349,6 +352,9 @@ try {
     checkModule(accountRoutes, 'accountRoutes');
     checkModule(metaRoutes, 'metaRoutes');
     checkModule(paddleWebhook, 'paddleWebhook');
+    checkModule(subscriptionRoutes, 'subscriptionRoutes');
+    checkModule(userRoutes, 'userRoutes');
+
     if (process.env.ENABLE_ADMIN_ROUTES !== 'false') {
         app.use('/api/admin', adminRoutes);
         logger.debug('adminRoutes registered.');
@@ -426,6 +432,7 @@ const shutdown = async (signal) => {
                 }
             } catch (err) {
 
+                
                 logger.error('Error closing MongoDB connection during shutdown:', { message: err.message });
             } finally {
                 logger.info('Shutdown complete.');
