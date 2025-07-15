@@ -44,6 +44,20 @@ const userSchema = new Schema({
         default: false
     },
     
+    // Push notification subscription data
+    pushSubscriptions: [{
+        endpoint: String,
+        keys: {
+            p256dh: String,
+            auth: String
+        },
+        userAgent: String,
+        createdAt: {
+            type: Date,
+            default: Date.now
+        }
+    }],
+    
     notesTree: {
         type: Schema.Types.Mixed,
         default: []

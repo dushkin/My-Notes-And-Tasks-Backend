@@ -32,6 +32,8 @@ import accountRoutes from './routes/accountRoutes.js';
 import metaRoutes from './routes/metaRoutes.js';
 import paddleWebhook from './routes/paddleWebhook.js';
 import adminRoutes from './routes/adminRoutes.js';
+import pushNotificationRoutes from './routes/pushNotificationRoutes.js';
+import reminderService from './services/reminderService.js';
 process.on('uncaughtException', (err) => {
     console.error('UNCAUGHT EXCEPTION DETAILS:');
     console.error('Error name:', err.name);
@@ -122,6 +124,10 @@ function initializeScheduledTasks() {
     try {
         scheduledTasksService.init();
         logger.info('Scheduled tasks service initialized successfully');
+        
+        // Initialize reminder service
+        reminderService.init();
+        logger.info('Reminder service initialized successfully');
     } catch (error) {
         logger.error('Failed to initialize scheduled tasks service', {
             error: error.message,
@@ -342,6 +348,7 @@ try {
     app.use('/api/account', accountRoutes);
     app.use('/api/meta', metaRoutes);
     app.use('/api/paddle', paddleWebhook);
+    app.use('/api/push', pushNotificationRoutes);
 
     checkModule(authRoutes, 'authRoutes');
     checkModule(itemsRoutes, 'itemsRoutes');
@@ -408,6 +415,7 @@ const shutdown = async (signal) => {
     logger.info(`Received ${signal}. Shutting down gracefully...`);
     try {
         await scheduledTasksService.shutdown();
+        await reminderService.shutdown();
     } catch (error) {
         logger.error('Error shutting down scheduled tasks service:', {
             message: error.message,
