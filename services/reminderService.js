@@ -239,3 +239,23 @@ class ReminderService {
 
 // Export singleton instance
 export default new ReminderService();
+
+
+
+// Utility to calculate next reminder time based on repeat config
+function calculateNextReminderTime(currentTime, repeat) {
+    const multiplier = {
+        seconds: 1000,
+        minutes: 60 * 1000,
+        hours: 60 * 60 * 1000,
+        days: 24 * 60 * 60 * 1000,
+        weeks: 7 * 24 * 60 * 60 * 1000,
+        months: 30 * 24 * 60 * 60 * 1000,
+        years: 365 * 24 * 60 * 60 * 1000,
+    };
+    if (!repeat || !repeat.unit || !repeat.value) return null;
+    const ms = multiplier[repeat.unit] * repeat.value;
+    return new Date(new Date(currentTime).getTime() + ms);
+}
+
+export { calculateNextReminderTime };

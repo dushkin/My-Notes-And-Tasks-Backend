@@ -3,6 +3,8 @@ import cron from 'node-cron';
 import { cleanupOrphanedImages } from './orphanedFileCleanupService.js';
 import { cleanupExpiredTokens } from '../utils/jwt.js';
 import logger from '../config/logger.js';
+import { calculateNextReminderTime } from './reminderService.js';
+import { sendReminderNotification as sendReminder } from '../controllers/pushNotificationController.js';
 
 class ScheduledTasksService {
     constructor() {
@@ -311,3 +313,26 @@ class ScheduledTasksService {
 const scheduledTasksService = new ScheduledTasksService();
 
 export default scheduledTasksService;
+
+async function scheduleReminder(reminder) {
+    const delay = new Date(reminder.time).getTime() - Date.now();
+    if (delay < 0) return;
+
+    setTimeout(async () => {
+        try {
+            await sendReminder(reminder);
+
+            if (reminder.repeat) {
+                const nextTime = calculateNextReminderTime(reminder.time, reminder.repeat);
+                if (nextTime) {
+                    reminder.time = nextTime;
+                    scheduleReminder(reminder);
+                }
+            }
+        } catch (error) {
+            console.error("Reminder execution failed:", error);
+        }
+    }, delay);
+}
+
+export { scheduleReminder };

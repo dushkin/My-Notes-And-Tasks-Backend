@@ -1,7 +1,9 @@
 import User from '../models/User.js';
-import pushNotificationService from '../services/pushNotificationService.js';
 import logger from '../config/logger.js';
 import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
+import pushNotificationService from '../services/pushNotificationService.js';
+
+const { sendReminder } = pushNotificationService;
 
 /**
  * Get VAPID public key for client-side subscription

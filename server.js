@@ -1,57 +1,135 @@
 import 'dotenv/config';
-import {
+
+// Add more detailed error logging at the very beginning
+console.log('🚀 Starting server.js...');
+
+// Wrap the error handlers import in try-catch
+let errorHandlers;
+try {
+    console.log('📦 Importing error handlers...');
+    errorHandlers = await import('./middleware/errorHandlerMiddleware.js');
+    console.log('✅ Error handlers imported successfully');
+} catch (err) {
+    console.error('❌ Failed to import error handlers:', err.message);
+    console.error(err.stack);
+    process.exit(1);
+}
+
+const {
     globalErrorHandler,
     notFoundHandler,
     handleUnhandledRejection,
-    handleUncaughtException
-} from './middleware/errorHandlerMiddleware.js';
-handleUncaughtException();
+    handleUncaughtException,
+    catchAsync,
+    AppError
+} = errorHandlers;
 
-import express from 'express';
-import cors from 'cors';
-import mongoose from 'mongoose';
-import mongoSanitize from 'express-mongo-sanitize';
-import xssCleanModule from 'xss-clean';
-const xss = typeof xssCleanModule === 'function' ? xssCleanModule : xssCleanModule.default;
-import hpp from 'hpp';
-import compression from 'compression';
-import path, { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import axios from 'axios';
-import authMiddleware from './middleware/authMiddleware.js';
-import { catchAsync, AppError } from './middleware/errorHandlerMiddleware.js';
-import securityHeaders from './middleware/securityHeadersMiddleware.js';
-import { generalLimiter } from './middleware/rateLimiterMiddleware.js';
-import imageCorsMiddleware from './middleware/imageCorsMiddleware.js';
-import logger from './config/logger.js';
-import scheduledTasksService from './services/scheduledTasksService.js';
-import authRoutes from './routes/authRoutes.js';
-import itemsRoutes from './routes/itemsRoutes.js';
-import imageRoutes from './routes/imageRoutes.js';
-import accountRoutes from './routes/accountRoutes.js';
-import metaRoutes from './routes/metaRoutes.js';
-import paddleWebhook from './routes/paddleWebhook.js';
-import adminRoutes from './routes/adminRoutes.js';
-import pushNotificationRoutes from './routes/pushNotificationRoutes.js';
-import reminderService from './services/reminderService.js';
+// Initialize exception handlers
+try {
+    console.log('🛡️ Initializing exception handlers...');
+    handleUncaughtException();
+    console.log('✅ Exception handlers initialized');
+} catch (err) {
+    console.error('❌ Failed to initialize exception handlers:', err.message);
+    process.exit(1);
+}
+
+// Enhanced process error handlers
 process.on('uncaughtException', (err) => {
-    console.error('UNCAUGHT EXCEPTION DETAILS:');
+    console.error('🔥 UNCAUGHT EXCEPTION DETAILS:');
     console.error('Error name:', err.name);
     console.error('Error message:', err.message);
     console.error('Error stack:', err.stack);
     process.exit(1);
 });
+
 process.on('unhandledRejection', (err) => {
-    console.error('UNHANDLED REJECTION DETAILS:');
+    console.error('🔥 UNHANDLED REJECTION DETAILS:');
     console.error('Error:', err);
+    console.error('Stack:', err.stack);
     process.exit(1);
 });
+
+// Import core modules with error handling
+let express, cors, mongoose, mongoSanitize, xssCleanModule, hpp, compression, path, axios;
+let authMiddleware, securityHeaders, generalLimiter, imageCorsMiddleware, logger, scheduledTasksService, reminderService;
+let authRoutes, itemsRoutes, imageRoutes, accountRoutes, metaRoutes, paddleWebhook, adminRoutes, pushNotificationRoutes;
+
+try {
+    console.log('📦 Importing core modules...');
+    express = (await import('express')).default;
+    cors = (await import('cors')).default;
+    mongoose = (await import('mongoose')).default;
+    mongoSanitize = (await import('express-mongo-sanitize')).default;
+    xssCleanModule = (await import('xss-clean')).default;
+    hpp = (await import('hpp')).default;
+    compression = (await import('compression')).default;
+    path = (await import('path')).default;
+    axios = (await import('axios')).default;
+    console.log('✅ Core modules imported successfully');
+} catch (err) {
+    console.error('❌ Failed to import core modules:', err.message);
+    console.error(err.stack);
+    process.exit(1);
+}
+
+try {
+    console.log('📦 Importing middleware modules...');
+    authMiddleware = (await import('./middleware/authMiddleware.js')).default;
+    securityHeaders = (await import('./middleware/securityHeadersMiddleware.js')).default;
+    const rateLimiter = await import('./middleware/rateLimiterMiddleware.js');
+    generalLimiter = rateLimiter.generalLimiter;
+    imageCorsMiddleware = (await import('./middleware/imageCorsMiddleware.js')).default;
+    console.log('✅ Middleware modules imported successfully');
+} catch (err) {
+    console.error('❌ Failed to import middleware modules:', err.message);
+    console.error(err.stack);
+    process.exit(1);
+}
+
+try {
+    console.log('📦 Importing services...');
+    logger = (await import('./config/logger.js')).default;
+    scheduledTasksService = (await import('./services/scheduledTasksService.js')).default;
+    reminderService = (await import('./services/reminderService.js')).default;
+    console.log('✅ Services imported successfully');
+} catch (err) {
+    console.error('❌ Failed to import services:', err.message);
+    console.error(err.stack);
+    process.exit(1);
+}
+
+try {
+    console.log('📦 Importing route modules...');
+    authRoutes = (await import('./routes/authRoutes.js')).default;
+    itemsRoutes = (await import('./routes/itemsRoutes.js')).default;
+    imageRoutes = (await import('./routes/imageRoutes.js')).default;
+    accountRoutes = (await import('./routes/accountRoutes.js')).default;
+    metaRoutes = (await import('./routes/metaRoutes.js')).default;
+    paddleWebhook = (await import('./routes/paddleWebhook.js')).default;
+    adminRoutes = (await import('./routes/adminRoutes.js')).default;
+    pushNotificationRoutes = (await import('./routes/pushNotificationRoutes.js')).default;
+    console.log('✅ Route modules imported successfully');
+} catch (err) {
+    console.error('❌ Failed to import route modules:', err.message);
+    console.error(err.stack);
+    process.exit(1);
+}
+
+const xss = typeof xssCleanModule === 'function' ? xssCleanModule : xssCleanModule.default;
+const { dirname } = path;
+const { fileURLToPath } = await import('url');
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 let isGracefullyClosing = false;
 const app = express();
+
+console.log('🏗️ Initializing Express app...');
 logger.info('Application starting...', { node_env: process.env.NODE_ENV });
+
+// Environment variables check
 logger.debug('Environment Variables Check', {
     ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS ? 'Set' : 'Not Set',
     FRONTEND_URL: process.env.FRONTEND_URL ? 'Set' : 'Not Set',
@@ -76,6 +154,7 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const DATA_ENCRYPTION_SECRET = process.env.DATA_ENCRYPTION_SECRET;
 const PADDLE_API_KEY = process.env.PADDLE_API_KEY;
 
+console.log('🔍 Checking required environment variables...');
 if (!isTestEnv && !MONGODB_URI) {
     logger.error('FATAL ERROR: MONGODB_URI is not defined. Exiting.');
     process.exit(1);
@@ -88,21 +167,32 @@ if (!isTestEnv && !PADDLE_API_KEY) {
     logger.error('FATAL ERROR: PADDLE_API_KEY is not defined. Exiting.');
     process.exit(1);
 }
+console.log('✅ Environment variables check passed');
 
+// MongoDB connection setup
 if (!isTestEnv) {
+    console.log('🔌 Setting up MongoDB connection...');
     logger.info('Connecting to MongoDB...', { mongoUriPreview: MONGODB_URI.substring(0, 20) + '...' });
     mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 30000 })
+        .catch(err => {
+            console.error("❌ MongoDB connection threw before .then:", err.message);
+            console.error(err.stack);
+            process.exit(1);
+        })
         .then(() => {
             logger.info('Successfully connected to MongoDB.');
+            console.log("✅ MongoDB connected");
             initializeScheduledTasks();
         })
         .catch((err) => {
             logger.error('Initial MongoDB connection error. Exiting.', { message: err.message, stack: err.stack });
             process.exit(1);
         });
-    mongoose.connection.on('error', (err) =>
-        logger.error('MongoDB connection error after initial connection:', { message: err.message })
-    );
+    mongoose.connection.on('error', (err) => {
+        console.error("❌ MongoDB emitted connection error:", err.message);
+        console.error(err.stack);
+        logger.error('MongoDB connection error after initial connection:', { message: err.message });
+    });
     mongoose.connection.on('disconnected', () => {
         if (!isGracefullyClosing) logger.warn('MongoDB disconnected. Attempting to reconnect...');
     });
@@ -112,6 +202,7 @@ if (!isTestEnv) {
 }
 
 function initializeScheduledTasks() {
+    console.log('📅 Initializing scheduled tasks...');
     const enableScheduledTasks = process.env.ENABLE_SCHEDULED_TASKS !== 'false';
     if (!enableScheduledTasks) {
         logger.info('Scheduled tasks disabled via ENABLE_SCHEDULED_TASKS environment variable');
@@ -122,11 +213,15 @@ function initializeScheduledTasks() {
         return;
     }
     try {
+        console.log("✅ Calling scheduledTasksService.init()");
         scheduledTasksService.init();
+        console.log("✅ scheduledTasksService.init() completed");
         logger.info('Scheduled tasks service initialized successfully');
         
         // Initialize reminder service
+        console.log("✅ Calling reminderService.init()");
         reminderService.init();
+        console.log("✅ reminderService.init() completed");
         logger.info('Reminder service initialized successfully');
     } catch (error) {
         logger.error('Failed to initialize scheduled tasks service', {
@@ -137,6 +232,7 @@ function initializeScheduledTasks() {
     }
 }
 
+console.log('🌐 Setting up CORS...');
 const allowedOriginsStr = process.env.ALLOWED_ORIGINS || 'http://localhost:5173,https://localhost:5173';
 // if user set ALLOWED_ORIGINS="*", treat it as wildcard
 const allowedOriginsList = allowedOriginsStr.trim() === '*'
@@ -158,8 +254,19 @@ const corsOptions = {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     exposedHeaders: ['Content-Length', 'Content-Type'],
 };
-app.use(cors(corsOptions));
-logger.info('CORS middleware initialized', { configuredOrigins: allowedOriginsList === '*' ? 'All (*)' : allowedOriginsList });
+
+try {
+    console.log('🔧 Applying CORS middleware...');
+    app.use(cors(corsOptions));
+    console.log('✅ CORS middleware applied');
+    logger.info('CORS middleware initialized', { configuredOrigins: allowedOriginsList === '*' ? 'All (*)' : allowedOriginsList });
+} catch (err) {
+    console.error('❌ Failed to apply CORS middleware:', err.message);
+    console.error(err.stack);
+    process.exit(1);
+}
+
+console.log('📝 Setting up request logging middleware...');
 app.use((req, res, next) => {
     const start = Date.now();
     const { method, originalUrl, ip } = req;
@@ -190,6 +297,8 @@ app.use((req, res, next) => {
     });
     next();
 });
+
+console.log('🔧 Setting up body parsing middleware...');
 // Keep the raw body for webhook signature verification
 app.use(express.json({
     limit: '50mb',
@@ -201,6 +310,8 @@ app.use(express.json({
     }
 }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+console.log('🔧 Setting up security middleware...');
 app.use(mongoSanitize());
 if (typeof xss === 'function') {
     app.use(xss());
@@ -209,10 +320,21 @@ if (typeof xss === 'function') {
 }
 app.use(hpp({ whitelist: ['sort', 'fields', 'page', 'limit'] }));
 app.use(compression());
+
+console.log('🔧 Setting up rate limiting...');
 app.use('/api/', generalLimiter);
 
-app.use(securityHeaders);
+console.log('🔧 Setting up security headers...');
+try {
+    app.use(securityHeaders);
+    console.log('✅ Security headers middleware applied');
+} catch (err) {
+    console.error('❌ Failed to apply security headers middleware:', err.message);
+    console.error(err.stack);
+    process.exit(1);
+}
 
+console.log('📁 Setting up static file serving...');
 const publicUploadsPath = path.join(__dirname, 'public', 'Uploads');
 app.use('/uploads', imageCorsMiddleware);
 app.use('/uploads', express.static(publicUploadsPath, {
@@ -230,11 +352,15 @@ logger.info('Static file serving configured for /uploads', {
     path: publicUploadsPath,
     corsEnabled: true
 });
+
+console.log('💳 Setting up Paddle configuration...');
 // Paddle environment and base URL (dynamic between sandbox and live)
 const PADDLE_ENV = process.env.NODE_ENV === 'production' ? 'production' : 'sandbox';
 const PADDLE_BASE_URL = PADDLE_ENV === 'production'
     ? 'https://api.paddle.com'
     : 'https://sandbox-api.paddle.com';
+
+console.log('🛒 Setting up Paddle transaction route...');
 app.post(
     '/api/paddle/create-transaction',
     authMiddleware,
@@ -307,7 +433,6 @@ app.post(
     })
 );
 
-
 const checkModule = (mod, name) => {
     if (!mod) {
         logger.error(`Module ${name} failed to import properly`);
@@ -320,8 +445,11 @@ const checkModule = (mod, name) => {
     }
 };
 
+console.log('🛣️ Registering routes...');
 try {
     logger.debug('Registering routes...');
+    
+    console.log('📋 Registering health check route...');
     app.get('/api/health', (req, res) => {
         if (process.env.NODE_ENV === 'test') {
             logger.info('/api/health accessed in test mode, reporting UP.');
@@ -342,30 +470,49 @@ try {
         }
     });
 
+    console.log('🔐 Registering auth routes...');
     app.use('/api/auth', authRoutes);
+    
+    console.log('📦 Registering items routes...');
     app.use('/api/items', itemsRoutes);
+    
+    console.log('🖼️ Registering image routes...');
     app.use('/api/images', imageRoutes);
+    
+    console.log('👤 Registering account routes...');
     app.use('/api/account', accountRoutes);
+    
+    console.log('📋 Registering meta routes...');
     app.use('/api/meta', metaRoutes);
+    
+    console.log('💳 Registering paddle webhook routes...');
     app.use('/api/paddle', paddleWebhook);
+    
+    console.log('🔔 Registering push notification routes...');
     app.use('/api/push', pushNotificationRoutes);
 
+    console.log('✅ Checking imported modules...');
     checkModule(authRoutes, 'authRoutes');
     checkModule(itemsRoutes, 'itemsRoutes');
     checkModule(imageRoutes, 'imageRoutes');
     checkModule(accountRoutes, 'accountRoutes');
     checkModule(metaRoutes, 'metaRoutes');
     checkModule(paddleWebhook, 'paddleWebhook');
+    
     if (process.env.ENABLE_ADMIN_ROUTES !== 'false') {
+        console.log('🔧 Registering admin routes...');
         app.use('/api/admin', adminRoutes);
         logger.debug('adminRoutes registered.');
     } else {
         logger.info('Admin routes disabled via ENABLE_ADMIN_ROUTES environment variable');
     }
 
+    console.log('✅ All routes registered successfully');
     logger.debug('All routes registered successfully.');
 
 } catch (err) {
+    console.error('❌ Error registering routes:', err.message);
+    console.error(err.stack);
     logger.error('Error registering routes:', {
         message: err.message,
         stack: err.stack,
@@ -377,24 +524,37 @@ try {
             accountRoutes: !!accountRoutes
         }
     });
-    throw err;
+    process.exit(1);
 }
 
+console.log('🏠 Setting up default route...');
 app.get('/', (req, res) => res.send('API is operational.'));
+
+console.log('🔧 Setting up error handlers...');
 app.all('*', notFoundHandler);
 app.use(globalErrorHandler);
 
 let serverInstance;
 const mainScriptPath = fileURLToPath(import.meta.url);
 const isMainModule = process.argv[1] === mainScriptPath || (typeof require !== 'undefined' && require.main === module && require.main.filename === mainScriptPath);
+
 if (isMainModule) {
     const PORT = process.env.PORT || 5001;
     const startServer = () => {
-        serverInstance = app.listen(PORT, () => {
-            logger.info(`Server running on port ${PORT} and ready to accept connections.`, { environment: process.env.NODE_ENV });
-        });
-        handleUnhandledRejection(serverInstance);
+        try {
+            console.log(`🚀 Starting server on port ${PORT}...`);
+            serverInstance = app.listen(PORT, () => {
+                console.log(`✅ Server running on port ${PORT} and ready to accept connections.`);
+                logger.info(`Server running on port ${PORT} and ready to accept connections.`, { environment: process.env.NODE_ENV });
+            });
+            handleUnhandledRejection(serverInstance);
+        } catch (err) {
+            console.error("🔥 Server failed to start:", err);
+            logger.error("🔥 Server failed to start:", { message: err.message, stack: err.stack });
+            process.exit(1);
+        }
     };
+    
     if (!isTestEnv && mongoose.connection.readyState !== 1) {
         logger.info("Server not started yet, waiting for MongoDB connection...");
         mongoose.connection.once('open', () => {
@@ -433,7 +593,6 @@ const shutdown = async (signal) => {
                     logger.info('MongoDB connection already closed or not established at shutdown.');
                 }
             } catch (err) {
-
                 logger.error('Error closing MongoDB connection during shutdown:', { message: err.message });
             } finally {
                 logger.info('Shutdown complete.');
