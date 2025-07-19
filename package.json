@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "7.1.1",
-  "commitMessage": "Reminders support - Phase 2",
+  "version": "7.2.0",
+  "commitMessage": "Support Reminders on DB",
   "description": "",
   "main": "server.js",
   "type": "module",

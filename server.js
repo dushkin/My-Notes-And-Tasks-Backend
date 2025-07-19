@@ -53,7 +53,7 @@ process.on('unhandledRejection', (err) => {
 // Import core modules with error handling
 let express, cors, mongoose, mongoSanitize, xssCleanModule, hpp, compression, path, axios;
 let authMiddleware, securityHeaders, generalLimiter, imageCorsMiddleware, logger, scheduledTasksService, reminderService;
-let authRoutes, itemsRoutes, imageRoutes, accountRoutes, metaRoutes, paddleWebhook, adminRoutes, pushNotificationRoutes;
+let authRoutes, itemsRoutes, imageRoutes, accountRoutes, metaRoutes, paddleWebhook, adminRoutes, pushNotificationRoutes, reminderRoutes;
 
 try {
     console.log('📦 Importing core modules...');
@@ -109,6 +109,7 @@ try {
     paddleWebhook = (await import('./routes/paddleWebhook.js')).default;
     adminRoutes = (await import('./routes/adminRoutes.js')).default;
     pushNotificationRoutes = (await import('./routes/pushNotificationRoutes.js')).default;
+    reminderRoutes = (await import('./routes/reminderRoutes.js')).default;
     console.log('✅ Route modules imported successfully');
 } catch (err) {
     console.error('❌ Failed to import route modules:', err.message);
@@ -490,6 +491,9 @@ try {
     
     console.log('🔔 Registering push notification routes...');
     app.use('/api/push', pushNotificationRoutes);
+
+    console.log('🔔 Registering reminders routes...');
+    app.use("/api/reminders", reminderRoutes);
 
     console.log('✅ Checking imported modules...');
     checkModule(authRoutes, 'authRoutes');
