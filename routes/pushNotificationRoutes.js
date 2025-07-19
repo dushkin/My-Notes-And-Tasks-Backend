@@ -1,31 +1,33 @@
-import express from 'express';
-import {
-    getVapidPublicKey,
-    subscribe,
-    unsubscribe,
-    sendTestNotification,
-    getSubscriptionStatus
-} from '../controllers/pushNotificationController.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import express from "express";
+import webpush from "web-push";
+import PushSubscription from "../models/PushSubscription.js";
+import authMiddleware from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Public route to get VAPID public key
-router.get('/vapid-public-key', getVapidPublicKey);
+// Save subscription
+router.post("/subscribe", authMiddleware, async (req, res) => {
+  const subscription = req.body;
+  if (!subscription || !subscription.endpoint) return res.status(400).send("Invalid subscription");
 
-// Protected routes (require authentication)
-router.use(authMiddleware);
-
-// Get user's subscription status
-router.get('/status', getSubscriptionStatus);
-
-// Subscribe to push notifications
-router.post('/subscribe', subscribe);
-
-// Unsubscribe from push notifications
-router.post('/unsubscribe', unsubscribe);
+  await PushSubscription.create({ userId: req.user.id, subscription });
+  res.status(201).send("Subscribed");
+});
 
 // Send test notification
-router.post('/test', sendTestNotification);
+router.post("/test", authMiddleware, async (req, res) => {
+  const subscriptions = await PushSubscription.find({ userId: req.user.id });
+
+  const payload = JSON.stringify({ title: "Test Notification", body: "Hello from multi-device push!" });
+
+  for (const sub of subscriptions) {
+    try {
+      await webpush.sendNotification(sub.subscription, payload);
+    } catch (err) {
+      console.error("Failed to send:", err);
+    }
+  }
+  res.status(200).send("Notification sent to all devices.");
+});
 
 export default router;

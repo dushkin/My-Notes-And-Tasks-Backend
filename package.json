@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "7.2.0",
-  "commitMessage": "Support Reminders on DB",
+  "version": "7.3.0",
+  "commitMessage": "Support cross devices reminders",
   "description": "",
   "main": "server.js",
   "type": "module",

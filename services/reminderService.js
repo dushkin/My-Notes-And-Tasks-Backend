@@ -1,7 +1,8 @@
 import cron from 'node-cron';
 import User from '../models/User.js';
-import { sendReminderNotification } from '../controllers/pushNotificationController.js';
 import logger from '../config/logger.js';
+import PushSubscription from "../models/PushSubscription.js";
+import webpush from "web-push";
 
 class ReminderService {
     constructor() {
@@ -9,18 +10,14 @@ class ReminderService {
         this.isRunning = false;
     }
 
-    /**
-     * Initialize the reminder service
-     */
     init() {
         if (process.env.NODE_ENV === 'test') {
             logger.info('Test environment detected. Skipping reminder service initialization.');
             return;
         }
 
-        // Run every minute to check for due reminders
         const schedule = process.env.REMINDER_CHECK_SCHEDULE || '* * * * *';
-        
+
         this.cronJob = cron.schedule(schedule, async () => {
             await this.checkAndSendReminders();
         }, {
@@ -32,9 +29,6 @@ class ReminderService {
         logger.info('Reminder service initialized', { schedule });
     }
 
-    /**
-     * Start the reminder service
-     */
     start() {
         if (this.cronJob && !this.isRunning) {
             this.cronJob.start();
@@ -43,9 +37,6 @@ class ReminderService {
         }
     }
 
-    /**
-     * Stop the reminder service
-     */
     stop() {
         if (this.cronJob && this.isRunning) {
             this.cronJob.stop();
@@ -54,19 +45,14 @@ class ReminderService {
         }
     }
 
-    /**
-     * Check for due reminders and send notifications
-     */
     async checkAndSendReminders() {
         try {
             const now = new Date();
             logger.debug('Checking for due reminders', { timestamp: now.toISOString() });
 
-            // Get all users with notes trees
-            const users = await User.find({ 
-                notesTree: { $exists: true, $ne: [] },
-                pushSubscriptions: { $exists: true, $ne: [] }
-            }).select('_id notesTree pushSubscriptions');
+            const users = await User.find({
+                notesTree: { $exists: true, $ne: [] }
+            }).select('_id notesTree');
 
             let totalRemindersChecked = 0;
             let totalRemindersSent = 0;
@@ -93,9 +79,6 @@ class ReminderService {
         }
     }
 
-    /**
-     * Process reminders for a specific user
-     */
     async processUserReminders(user, currentTime) {
         let remindersChecked = 0;
         let remindersSent = 0;
@@ -104,26 +87,29 @@ class ReminderService {
             const dueReminders = this.findDueReminders(user.notesTree, currentTime);
             remindersChecked = dueReminders.length;
 
+            const subscriptions = await PushSubscription.find({ userId: user._id });
+
             for (const reminder of dueReminders) {
-                try {
-                    await sendReminderNotification(
-                        user._id,
-                        reminder.itemTitle,
-                        reminder.itemId,
-                        reminder.reminderTime
-                    );
-                    remindersSent++;
+                const payload = JSON.stringify({
+                    title: "🔔 Reminder",
+                    body: reminder.itemTitle,
+                    data: { taskId: reminder.itemId }
+                });
 
-                    // Remove the processed reminder from the user's tree
-                    await this.removeProcessedReminder(user._id, reminder.itemId);
-
-                } catch (error) {
-                    logger.error('Failed to send individual reminder:', {
-                        userId: user._id,
-                        itemId: reminder.itemId,
-                        error: error.message
-                    });
+                for (const sub of subscriptions) {
+                    try {
+                        await webpush.sendNotification(sub.subscription, payload);
+                        remindersSent++;
+                    } catch (err) {
+                        logger.warn("Push notification failed", {
+                            userId: user._id,
+                            endpoint: sub.subscription.endpoint,
+                            error: err.message
+                        });
+                    }
                 }
+
+                await this.removeProcessedReminder(user._id, reminder.itemId);
             }
 
         } catch (error) {
@@ -137,47 +123,34 @@ class ReminderService {
         return { checked: remindersChecked, sent: remindersSent };
     }
 
-    /**
-     * Find due reminders in a notes tree
-     */
     findDueReminders(notesTree, currentTime, path = []) {
         const dueReminders = [];
 
-        if (!Array.isArray(notesTree)) {
-            return dueReminders;
-        }
+        if (!Array.isArray(notesTree)) return dueReminders;
 
         for (const item of notesTree) {
-            // Check if this item has a due reminder
             if (item.reminder && item.reminder.timestamp) {
                 const reminderTime = new Date(item.reminder.timestamp);
                 if (reminderTime <= currentTime) {
                     dueReminders.push({
                         itemId: item.id,
                         itemTitle: item.label || 'Untitled',
-                        reminderTime: reminderTime,
+                        reminderTime,
                         path: [...path, item.label || 'Untitled']
                     });
                 }
             }
 
-            // Recursively check children
             if (item.children && Array.isArray(item.children)) {
-                const childReminders = this.findDueReminders(
-                    item.children, 
-                    currentTime, 
-                    [...path, item.label || 'Untitled']
+                dueReminders.push(
+                    ...this.findDueReminders(item.children, currentTime, [...path, item.label || 'Untitled'])
                 );
-                dueReminders.push(...childReminders);
             }
         }
 
         return dueReminders;
     }
 
-    /**
-     * Remove a processed reminder from user's notes tree
-     */
     async removeProcessedReminder(userId, itemId) {
         try {
             const user = await User.findById(userId);
@@ -186,14 +159,11 @@ class ReminderService {
                 return;
             }
 
-            // Remove reminder from the item
             const updated = this.removeReminderFromTree(user.notesTree, itemId);
-            
             if (updated) {
                 await user.save();
                 logger.debug('Reminder removed from item', { userId, itemId });
             }
-
         } catch (error) {
             logger.error('Failed to remove processed reminder:', {
                 userId,
@@ -204,13 +174,8 @@ class ReminderService {
         }
     }
 
-    /**
-     * Remove reminder from a specific item in the tree
-     */
     removeReminderFromTree(tree, itemId) {
-        if (!Array.isArray(tree)) {
-            return false;
-        }
+        if (!Array.isArray(tree)) return false;
 
         for (const item of tree) {
             if (item.id === itemId && item.reminder) {
@@ -219,30 +184,21 @@ class ReminderService {
             }
 
             if (item.children && Array.isArray(item.children)) {
-                if (this.removeReminderFromTree(item.children, itemId)) {
-                    return true;
-                }
+                if (this.removeReminderFromTree(item.children, itemId)) return true;
             }
         }
 
         return false;
     }
 
-    /**
-     * Shutdown the reminder service
-     */
     async shutdown() {
         this.stop();
         logger.info('Reminder service shutdown completed');
     }
 }
 
-// Export singleton instance
 export default new ReminderService();
 
-
-
-// Utility to calculate next reminder time based on repeat config
 function calculateNextReminderTime(currentTime, repeat) {
     const multiplier = {
         seconds: 1000,
