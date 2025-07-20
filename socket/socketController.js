@@ -5,7 +5,7 @@ const connectedUsers = new Map();
 export function setupSocketEvents(io) {
   io.on("connection", (socket) => {
 
-    const userId = socket.handshake.auth?.userId;
+    const userId = socket.userId;
 
     console.log("🔌 Incoming socket connection", {
       userId: socket.handshake.auth?.userId,
