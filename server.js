@@ -534,6 +534,7 @@ if (isMainModule) {
             console.log(`🚀 Starting server on port ${PORT}...`);
             
 const httpServer = createServer(app);
+setupWebSocket(httpServer);
 const io = new SocketIOServer(httpServer, {
   cors: {
     origin: "*",
@@ -633,3 +634,4 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default app;
+import { setupWebSocket } from './utils/websocket.js';

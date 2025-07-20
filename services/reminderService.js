@@ -1,3 +1,4 @@
+import { emitToUser } from "../socket/socketController.js";
 import cron from 'node-cron';
 import User from '../models/User.js';
 import logger from '../config/logger.js';
@@ -139,6 +140,7 @@ class ReminderService {
 
         for (const item of dueReminders) {
             await sendReminderNotification(user._id, item.label, item.id, item.reminder.timestamp);
+            emitToUser(user._id.toString(), 'reminderTriggered', { itemId: item.id, reminderTime: new Date() });
 
             let nextReminder = null;
             if (item.reminder.repeatOptions) {

@@ -1,3 +1,4 @@
+import { emitToUser } from "../socket/socketController.js";
 // controllers/itemsController.js
 import User from '../models/User.js'; // Assuming ESM
 import {
@@ -145,6 +146,8 @@ export const createItem = catchAsync(async (req, res, next) => {
     user.notesTree = currentTree;
     user.markModified('notesTree');
     await user.save();
+    emitToUser(user._id.toString(), 'itemCreated', newItem);
+    notifyUser(userId, { type: 'TREE_ITEM_UPDATED', itemId, updates });
     logger.info('Item created successfully', { userId, itemId: newItem.id, type, label: trimmedLabel, parentId });
 
     // Directly return the 'newItem' object which is guaranteed to be correct.
@@ -201,6 +204,8 @@ export const updateItem = catchAsync(async (req, res, next) => {
     user.markModified('notesTree');
     logger.debug('notesTree marked as modified, attempting save', { userId, itemId });
     await user.save();
+    emitToUser(user._id.toString(), 'itemUpdated', itemAfterInMemoryUpdate);
+    notifyUser(userId, { type: 'TREE_ITEM_UPDATED', itemId, updates });
     logger.info('Item updated successfully', { userId, itemId });
     
     // Return the item from our reliable in-memory representation.
@@ -231,6 +236,8 @@ export const deleteItem = catchAsync(async (req, res, next) => {
     user.notesTree = updatedTree;
     user.markModified('notesTree');
     await user.save();
+    emitToUser(user._id.toString(), 'itemDeleted', { itemId });
+    notifyUser(userId, { type: 'TREE_ITEM_UPDATED', itemId, updates });
     logger.info('Item deleted successfully', { userId, itemId });
     res.status(200).json({ message: 'Item deleted successfully.' });
 });
@@ -246,6 +253,7 @@ export const deleteTree = catchAsync(async (req, res, next) => {
     user.notesTree = [];
     user.markModified('notesTree');
     await user.save();
+    notifyUser(userId, { type: 'TREE_ITEM_UPDATED', itemId, updates });
     logger.info('Entire tree deleted successfully', { userId 
     });
     res.status(200).json({ message: 'Tree deleted successfully' });
@@ -267,6 +275,8 @@ export const replaceUserTree = catchAsync(async (req, res, next) => {
     user.notesTree = processedNewTree;
     user.markModified('notesTree');
     const savedUser = await user.save();
+    emitToUser(user._id.toString(), 'treeReplaced', user.notesTree);
+    notifyUser(userId, { type: 'TREE_ITEM_UPDATED', itemId, updates });
 
     logger.info('User tree replaced successfully', { userId });
     res.status(200).json({
@@ -329,5 +339,7 @@ export const moveItem = catchAsync(async (req, res, next) => {
   user.notesTree = currentTree;
   user.markModified('notesTree');
   await user.save();
+  emitToUser(user._id.toString(), 'itemMoved', { itemId, newParentId });
+    notifyUser(userId, { type: 'TREE_ITEM_UPDATED', itemId, updates });
   res.status(200).json({ status: 'success', data: { movedItem: itemToMove } });
 });

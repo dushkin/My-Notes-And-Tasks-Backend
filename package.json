@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "7.4.0",
-  "commitMessage": "Support multi device notifications sync",
+  "version": "7.4.1",
+  "commitMessage": "Multi device notifications sync - fixes",
   "description": "",
   "main": "server.js",
   "type": "module",
