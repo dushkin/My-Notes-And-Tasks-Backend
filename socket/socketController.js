@@ -5,6 +5,9 @@ const connectedUsers = new Map();
 export function setupSocketEvents(io) {
   io.on("connection", (socket) => {
     const userId = socket.handshake.auth?.userId;
+
+    console.log("🔌 New socket connection attempt", { userId, socketId: socket.id });
+
     if (!userId) return socket.disconnect();
 
     if (!connectedUsers.has(userId)) {
