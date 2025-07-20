@@ -213,7 +213,7 @@ function initializeScheduledTasks() {
         scheduledTasksService.init();
         console.log("✅ scheduledTasksService.init() completed");
         logger.info('Scheduled tasks service initialized successfully');
-        
+
         // Initialize reminder service
         console.log("✅ Calling reminderService.init()");
         reminderService.init();
@@ -441,7 +441,7 @@ const checkModule = (mod, name) => {
 console.log('🛣️ Registering routes...');
 try {
     logger.debug('Registering routes...');
-    
+
     console.log('📋 Registering health check route...');
     app.get('/api/health', (req, res) => {
         if (process.env.NODE_ENV === 'test') {
@@ -465,20 +465,20 @@ try {
 
     console.log('🔐 Registering auth routes...');
     app.use('/api/auth', authRoutes);
-    
+
     console.log('📦 Registering items routes...');
     app.use('/api/items', itemsRoutes);
     console.log('🖼️ Registering image routes...');
     app.use('/api/images', imageRoutes);
-    
+
     console.log('👤 Registering account routes...');
     app.use('/api/account', accountRoutes);
-    
+
     console.log('📋 Registering meta routes...');
     app.use('/api/meta', metaRoutes);
     console.log('💳 Registering paddle webhook routes...');
     app.use('/api/paddle', paddleWebhook);
-    
+
     console.log('🔔 Registering push notification routes...');
     app.use('/api/push', pushNotificationRoutes);
 
@@ -532,32 +532,47 @@ if (isMainModule) {
     const startServer = () => {
         try {
             console.log(`🚀 Starting server on port ${PORT}...`);
-            
-const httpServer = createServer(app);
-setupWebSocket(httpServer);
-const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
 
-io.use(async (socket, next) => {
-  const token = socket.handshake.auth?.token;
-  if (!token) return next(new Error("No token"));
-  try {
-    const { verifyAccessToken } = await import('./utils/jwt.js');
-    const decoded = verifyAccessToken(token);
-    socket.handshake.auth.userId = decoded.user.id;
-    next();
-  } catch {
-    return next(new Error("Invalid token"));
-  }
-});
+            const httpServer = createServer(app);
+            setupWebSocket(httpServer);
+            const io = new SocketIOServer(httpServer, {
+                cors: {
+                    origin: "*",
+                    methods: ["GET", "POST"]
+                }
+            });
 
-setupSocketEvents(io);
+            io.use(async (socket, next) => {
+                const token = socket.handshake.auth?.token;
 
-serverInstance = httpServer.listen(PORT, () => {
+                console.log("🛂 Incoming socket connection attempt:", {
+                    token: token?.slice(0, 10) + "...", // for safe debugging
+                    headers: socket.handshake.headers,
+                });
+
+                if (!token) {
+                    console.warn("❌ Rejected: No token");
+                    return next(new Error("No token"));
+                }
+
+                try {
+                    const { verifyAccessToken } = await import('./utils/jwt.js'); // or remove if already imported
+                    const decoded = verifyAccessToken(token);
+
+                    console.log("✅ Token decoded:", decoded);
+
+                    socket.userId = decoded.user.id;
+                    next();
+                } catch (err) {
+                    console.error("❌ Invalid token:", err.message || err);
+                    return next(new Error("Invalid token"));
+                }
+            });
+
+
+            setupSocketEvents(io);
+
+            serverInstance = httpServer.listen(PORT, () => {
                 console.log(`✅ Server running on port ${PORT} and ready to accept connections.`);
                 logger.info(`Server running on port ${PORT} and ready to accept connections.`, { environment: process.env.NODE_ENV });
             });

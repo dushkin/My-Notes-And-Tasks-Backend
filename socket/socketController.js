@@ -4,11 +4,20 @@ const connectedUsers = new Map();
 
 export function setupSocketEvents(io) {
   io.on("connection", (socket) => {
+
     const userId = socket.handshake.auth?.userId;
 
-    console.log("🔌 New socket connection attempt", { userId, socketId: socket.id });
+    console.log("🔌 Incoming socket connection", {
+      userId: socket.handshake.auth?.userId,
+      headers: socket.handshake.headers,
+    });
 
-    if (!userId) return socket.disconnect();
+    if (!userId) {
+      console.warn("❌ Rejected socket connection: missing userId in handshake");
+      return socket.disconnect();
+    }
+
+    console.log("✅ Accepted socket connection", { userId, socketId: socket.id });
 
     if (!connectedUsers.has(userId)) {
       connectedUsers.set(userId, []);
