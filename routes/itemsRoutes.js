@@ -16,7 +16,6 @@ import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
 import { validateItemNameMiddleware } from '../utils/itemNameValidation.js'; // Add this import
 import User from '../models/User.js';
 import logger from '../config/logger.js';
-
 const router = express.Router();
 
 router.use(authMiddleware);
@@ -39,7 +38,6 @@ const validate = (req, res, next) => {
 
 // Get full notes tree
 router.get('/', getNotesTree);
-
 // Get a single item
 router.get(
   '/:itemId',
@@ -49,7 +47,6 @@ router.get(
   ],
   getItem
 );
-
 // Create a new root-level item
 router.post(
   '/',
@@ -69,7 +66,6 @@ router.post(
   validateItemNameMiddleware, // Add validation middleware here
   createItem
 );
-
 // Create a child item under a specific parent
 router.post(
   '/:parentId',
@@ -87,7 +83,8 @@ router.post(
       .withMessage('Type must be "note", "folder", or "task"'),
     validate,
   ],
-  validateItemNameMiddleware, // Add validation middleware here
+  validateItemNameMiddleware, 
+  // Add validation middleware here
   createItem
 );
 
@@ -113,7 +110,6 @@ router.patch(
   validateItemNameMiddleware, // Add validation middleware here
   updateItem
 );
-
 // Delete an item
 router.delete(
   '/:itemId',
@@ -123,7 +119,6 @@ router.delete(
   ],
   deleteItem
 );
-
 // Test-only: clear entire tree
 if (process.env.NODE_ENV !== 'production') {
     router.delete(
@@ -165,7 +160,6 @@ router.put(
   ],
   replaceUserTree
 );
-
 // Move an item
 router.patch(
   '/:itemId/move',
@@ -180,5 +174,4 @@ router.patch(
   ],
   moveItem
 );
-
 export default router;

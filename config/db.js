@@ -1,10 +1,10 @@
 // config/db.js
 import mongoose from 'mongoose'; // Assuming ESM, changed from require
-import logger from './logger.js'; // Import the logger
+import logger from './logger.js';
+// Import the logger
 
 const connectDB = async () => {
   const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/MyNotesAppDB_Prod';
-
   logger.debug('=== DB CONNECTION DEBUG ===', { mongoURI });
 
   if (!mongoURI) {

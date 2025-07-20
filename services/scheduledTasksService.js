@@ -17,12 +17,10 @@ class ScheduledTasksService {
      */
     init() {
         logger.info('Initializing scheduled tasks service...');
-        
         try {
             this.scheduleOrphanedImageCleanup();
             this.scheduleExpiredTokenCleanup();
             this.scheduleHealthChecks();
-            
             logger.info('All scheduled tasks initialized successfully', {
                 activeTasks: this.tasks.size,
                 taskNames: Array.from(this.tasks.keys())
@@ -42,7 +40,8 @@ class ScheduledTasksService {
      */
     scheduleOrphanedImageCleanup() {
         const taskName = 'orphaned-image-cleanup';
-        const schedule = process.env.ORPHANED_IMAGE_CLEANUP_SCHEDULE || '0 2 * * *'; // Daily at 2 AM
+        const schedule = process.env.ORPHANED_IMAGE_CLEANUP_SCHEDULE || '0 2 * * *';
+        // Daily at 2 AM
         
         const task = cron.schedule(schedule, async () => {
             if (this.isShuttingDown) return;
@@ -61,10 +60,9 @@ class ScheduledTasksService {
                 });
             }
         }, {
-            scheduled: false, // Don't start immediately
+            scheduled: false, //Don't start immediately
             timezone: process.env.CRON_TIMEZONE || 'UTC'
         });
-
         this.tasks.set(taskName, {
             task,
             schedule,
@@ -72,7 +70,6 @@ class ScheduledTasksService {
             lastRun: null,
             enabled: process.env.ENABLE_ORPHANED_IMAGE_CLEANUP !== 'false'
         });
-
         if (this.tasks.get(taskName).enabled) {
             task.start();
             logger.info(`Scheduled task started: ${taskName}`, { schedule });
@@ -87,7 +84,8 @@ class ScheduledTasksService {
      */
     scheduleExpiredTokenCleanup() {
         const taskName = 'expired-token-cleanup';
-        const schedule = process.env.EXPIRED_TOKEN_CLEANUP_SCHEDULE || '0 */6 * * *'; // Every 6 hours
+        const schedule = process.env.EXPIRED_TOKEN_CLEANUP_SCHEDULE || '0 */6 * * *';
+        // Every 6 hours
         
         const task = cron.schedule(schedule, async () => {
             if (this.isShuttingDown) return;
@@ -112,7 +110,6 @@ class ScheduledTasksService {
             scheduled: false,
             timezone: process.env.CRON_TIMEZONE || 'UTC'
         });
-
         this.tasks.set(taskName, {
             task,
             schedule,
@@ -120,7 +117,6 @@ class ScheduledTasksService {
             lastRun: null,
             enabled: process.env.ENABLE_EXPIRED_TOKEN_CLEANUP !== 'false'
         });
-
         if (this.tasks.get(taskName).enabled) {
             task.start();
             logger.info(`Scheduled task started: ${taskName}`, { schedule });
@@ -135,7 +131,8 @@ class ScheduledTasksService {
      */
     scheduleHealthChecks() {
         const taskName = 'system-health-check';
-        const schedule = process.env.HEALTH_CHECK_SCHEDULE || '0 * * * *'; // Every hour
+        const schedule = process.env.HEALTH_CHECK_SCHEDULE || '0 * * * *';
+        // Every hour
         
         const task = cron.schedule(schedule, async () => {
             if (this.isShuttingDown) return;
@@ -159,7 +156,6 @@ class ScheduledTasksService {
             scheduled: false,
             timezone: process.env.CRON_TIMEZONE || 'UTC'
         });
-
         this.tasks.set(taskName, {
             task,
             schedule,
@@ -167,7 +163,6 @@ class ScheduledTasksService {
             lastRun: null,
             enabled: process.env.ENABLE_HEALTH_CHECKS !== 'false'
         });
-
         if (this.tasks.get(taskName).enabled) {
             task.start();
             logger.info(`Scheduled task started: ${taskName}`, { schedule });
@@ -187,7 +182,6 @@ class ScheduledTasksService {
             nodeVersion: process.version,
             environment: process.env.NODE_ENV
         };
-
         // Add MongoDB connection status if available
         try {
             const mongoose = await import('mongoose');
@@ -214,7 +208,6 @@ class ScheduledTasksService {
         }
 
         logger.info(`Manually triggering task: ${taskName}`);
-        
         switch (taskName) {
             case 'orphaned-image-cleanup':
                 return await cleanupOrphanedImages();
@@ -232,7 +225,6 @@ class ScheduledTasksService {
      */
     getTasksStatus() {
         const status = {};
-        
         for (const [name, info] of this.tasks.entries()) {
             status[name] = {
                 schedule: info.schedule,
@@ -296,7 +288,6 @@ class ScheduledTasksService {
 
         // Wait a moment for any running tasks to complete
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
         this.tasks.clear();
         logger.info('Scheduled tasks service shutdown complete');
     }
@@ -313,11 +304,9 @@ class ScheduledTasksService {
 const scheduledTasksService = new ScheduledTasksService();
 
 export default scheduledTasksService;
-
 async function scheduleReminder(reminder) {
     const delay = new Date(reminder.time).getTime() - Date.now();
     if (delay < 0) return;
-
     setTimeout(async () => {
         try {
             await sendReminder(reminder);

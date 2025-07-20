@@ -32,13 +32,6 @@ export function findItemRecursive(nodes, itemId) {
     return null;
 }
 
-/**
- * Finds the parent, siblings array, and index of an item.
- * @param {Array} nodes - The array of nodes to search in.
- * @param {string} itemId - The ID of the item to find.
- * @param {object|null} parent - The parent of the current `nodes` array.
- * @returns {{parent: object|null, siblings: Array|null, index: number}}
- */
 export function findParentAndSiblings(nodes, itemId, parent = null) {
     if (!Array.isArray(nodes)) {
         return { parent: null, siblings: null, index: -1 };
@@ -50,32 +43,27 @@ export function findParentAndSiblings(nodes, itemId, parent = null) {
         }
         if (item.type === 'folder' && Array.isArray(item.children)) {
             const found = findParentAndSiblings(item.children, itemId, item);
-            // If found in children, siblings will not be null
             if (found.siblings) {
                 return found;
             }
         }
     }
-    // Not found in this branch
     return { parent: null, siblings: null, index: -1 };
 }
 
-
 export function deleteItemInTree(nodes, itemId) {
-    if (!Array.isArray(nodes) || !itemId) return nodes; // Return original if not an array or no itemId
+    if (!Array.isArray(nodes) || !itemId) return nodes;
     let itemFoundAndDeleted = false;
     const newNodes = nodes.filter(item => {
         if (item.id === itemId) {
             itemFoundAndDeleted = true;
-            return false; // Exclude the item
+            return false;
         }
         return true;
     });
-
     if (itemFoundAndDeleted) {
         return newNodes;
     }
-
     let treeChangedInChildren = false;
     const processedNodes = nodes.map(item => {
         if (item.type === 'folder' && Array.isArray(item.children)) {
@@ -87,15 +75,11 @@ export function deleteItemInTree(nodes, itemId) {
         }
         return item;
     });
-
     return treeChangedInChildren ? processedNodes : nodes;
 }
 
-
 export function updateItemInTree(nodes, itemId, updates) {
-    if (!Array.isArray(nodes)) return nodes || [];
-    if (!itemId || !updates || Object.keys(updates).length === 0) return nodes;
-
+    if (!Array.isArray(nodes) || !itemId || !updates || Object.keys(updates).length === 0) return nodes;
     let treeModified = false;
     const newNodes = nodes.map(item => {
         if (item.id === itemId) {
@@ -110,9 +94,8 @@ export function updateItemInTree(nodes, itemId, updates) {
                 }
             }
             if (updates.hasOwnProperty('content') && (item.type === 'note' || item.type === 'task')) {
-                const newContent = updates.content !== undefined ? updates.content : "";
-                if (item.content !== newContent) {
-                    allowedUpdates.content = newContent;
+                if (item.content !== updates.content) {
+                    allowedUpdates.content = updates.content;
                     itemChanged = true;
                 }
             }
@@ -124,16 +107,20 @@ export function updateItemInTree(nodes, itemId, updates) {
                 }
             }
             if (updates.hasOwnProperty('direction') && (item.type === 'note' || item.type === 'task')) {
-                const newDirection = (updates.direction === 'rtl' || updates.direction === 'ltr') ? updates.direction : (item.direction || 'ltr');
+                const newDirection = (updates.direction === 'rtl' || updates.direction === 'ltr') ? updates.direction : 'ltr';
                 if (item.direction !== newDirection) {
                     allowedUpdates.direction = newDirection;
                     itemChanged = true;
                 }
             }
+            if (updates.hasOwnProperty('reminder')) {
+                allowedUpdates.reminder = updates.reminder; // Can be object or null
+                itemChanged = true;
+            }
 
             if (itemChanged) {
                 treeModified = true;
-                allowedUpdates.updatedAt = new Date().toISOString(); // Update timestamp
+                allowedUpdates.updatedAt = new Date().toISOString();
                 return { ...item, ...allowedUpdates };
             }
             return item;
@@ -142,14 +129,13 @@ export function updateItemInTree(nodes, itemId, updates) {
             const updatedChildren = updateItemInTree(item.children, itemId, updates);
             if (updatedChildren !== item.children) {
                 treeModified = true;
-                return { ...item, children: updatedChildren };
+                return { ...item, children: updatedChildren, updatedAt: new Date().toISOString() };
             }
         }
         return item;
     });
-    return treeModified ? newNodes : newNodes;
+    return treeModified ? newNodes : nodes;
 }
-
 
 export function hasSiblingWithName(siblings, nameToCheck, excludeId = null) {
     if (!Array.isArray(siblings) || !nameToCheck) return false;
@@ -166,7 +152,6 @@ export function hasSiblingWithName(siblings, nameToCheck, excludeId = null) {
 export function ensureServerSideIdsAndStructure(item) {
     const newItem = { ...item };
     const now = new Date().toISOString();
-
     newItem.id = newItem.id && typeof newItem.id === 'string' &&
                  !newItem.id.startsWith('client-') && !newItem.id.startsWith('temp-')
                  ? newItem.id : uuidv4_imported();

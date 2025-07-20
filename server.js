@@ -1,8 +1,10 @@
-import 'dotenv/config';
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
+import { setupSocketEvents } from './socket/socketController.js';
 
+import 'dotenv/config';
 // Add more detailed error logging at the very beginning
 console.log('🚀 Starting server.js...');
-
 // Wrap the error handlers import in try-catch
 let errorHandlers;
 try {
@@ -23,7 +25,6 @@ const {
     catchAsync,
     AppError
 } = errorHandlers;
-
 // Initialize exception handlers
 try {
     console.log('🛡️ Initializing exception handlers...');
@@ -42,19 +43,16 @@ process.on('uncaughtException', (err) => {
     console.error('Error stack:', err.stack);
     process.exit(1);
 });
-
 process.on('unhandledRejection', (err) => {
     console.error('🔥 UNHANDLED REJECTION DETAILS:');
     console.error('Error:', err);
     console.error('Stack:', err.stack);
     process.exit(1);
 });
-
 // Import core modules with error handling
 let express, cors, mongoose, mongoSanitize, xssCleanModule, hpp, compression, path, axios;
 let authMiddleware, securityHeaders, generalLimiter, imageCorsMiddleware, logger, scheduledTasksService, reminderService;
 let authRoutes, itemsRoutes, imageRoutes, accountRoutes, metaRoutes, paddleWebhook, adminRoutes, pushNotificationRoutes, reminderRoutes;
-
 try {
     console.log('📦 Importing core modules...');
     express = (await import('express')).default;
@@ -129,7 +127,6 @@ const app = express();
 
 console.log('🏗️ Initializing Express app...');
 logger.info('Application starting...', { node_env: process.env.NODE_ENV });
-
 // Environment variables check
 logger.debug('Environment Variables Check', {
     ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS ? 'Set' : 'Not Set',
@@ -144,10 +141,8 @@ logger.debug('Environment Variables Check', {
     BETA_USER_LIMIT: process.env.BETA_USER_LIMIT ? 'Set' : 'Not Set (default: 50)',
     ENABLE_SCHEDULED_TASKS: process.env.ENABLE_SCHEDULED_TASKS ? 'Set' : 'Not Set (default: true)',
     ORPHANED_IMAGE_CLEANUP_SCHEDULE: process.env.ORPHANED_IMAGE_CLEANUP_SCHEDULE ? 'Set' : 'Not Set (default: 0 2 * * *)',
-    EXPIRED_TOKEN_CLEANUP_SCHEDULE: process.env.EXPIRED_TOKEN_CLEANUP_SCHEDULE ?
-        'Set' : 'Not Set (default: 0 */6 * * *)',
-    CRON_TIMEZONE: process.env.CRON_TIMEZONE ?
-        'Set' : 'Not Set (default: UTC)'
+    EXPIRED_TOKEN_CLEANUP_SCHEDULE: process.env.EXPIRED_TOKEN_CLEANUP_SCHEDULE ? 'Set' : 'Not Set (default: 0 */6 * * *)',
+    CRON_TIMEZONE: process.env.CRON_TIMEZONE ? 'Set' : 'Not Set (default: UTC)'
 });
 
 const isTestEnv = process.env.NODE_ENV === 'test';
@@ -255,7 +250,6 @@ const corsOptions = {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     exposedHeaders: ['Content-Length', 'Content-Type'],
 };
-
 try {
     console.log('🔧 Applying CORS middleware...');
     app.use(cors(corsOptions));
@@ -353,14 +347,12 @@ logger.info('Static file serving configured for /uploads', {
     path: publicUploadsPath,
     corsEnabled: true
 });
-
 console.log('💳 Setting up Paddle configuration...');
 // Paddle environment and base URL (dynamic between sandbox and live)
 const PADDLE_ENV = process.env.NODE_ENV === 'production' ? 'production' : 'sandbox';
 const PADDLE_BASE_URL = PADDLE_ENV === 'production'
     ? 'https://api.paddle.com'
     : 'https://sandbox-api.paddle.com';
-
 console.log('🛒 Setting up Paddle transaction route...');
 app.post(
     '/api/paddle/create-transaction',
@@ -476,7 +468,6 @@ try {
     
     console.log('📦 Registering items routes...');
     app.use('/api/items', itemsRoutes);
-    
     console.log('🖼️ Registering image routes...');
     app.use('/api/images', imageRoutes);
     
@@ -485,7 +476,6 @@ try {
     
     console.log('📋 Registering meta routes...');
     app.use('/api/meta', metaRoutes);
-    
     console.log('💳 Registering paddle webhook routes...');
     app.use('/api/paddle', paddleWebhook);
     
@@ -494,7 +484,6 @@ try {
 
     console.log('🔔 Registering reminders routes...');
     app.use("/api/reminders", reminderRoutes);
-
     console.log('✅ Checking imported modules...');
     checkModule(authRoutes, 'authRoutes');
     checkModule(itemsRoutes, 'itemsRoutes');
@@ -502,7 +491,6 @@ try {
     checkModule(accountRoutes, 'accountRoutes');
     checkModule(metaRoutes, 'metaRoutes');
     checkModule(paddleWebhook, 'paddleWebhook');
-    
     if (process.env.ENABLE_ADMIN_ROUTES !== 'false') {
         console.log('🔧 Registering admin routes...');
         app.use('/api/admin', adminRoutes);
@@ -513,7 +501,6 @@ try {
 
     console.log('✅ All routes registered successfully');
     logger.debug('All routes registered successfully.');
-
 } catch (err) {
     console.error('❌ Error registering routes:', err.message);
     console.error(err.stack);
@@ -533,7 +520,6 @@ try {
 
 console.log('🏠 Setting up default route...');
 app.get('/', (req, res) => res.send('API is operational.'));
-
 console.log('🔧 Setting up error handlers...');
 app.all('*', notFoundHandler);
 app.use(globalErrorHandler);
@@ -541,13 +527,36 @@ app.use(globalErrorHandler);
 let serverInstance;
 const mainScriptPath = fileURLToPath(import.meta.url);
 const isMainModule = process.argv[1] === mainScriptPath || (typeof require !== 'undefined' && require.main === module && require.main.filename === mainScriptPath);
-
 if (isMainModule) {
     const PORT = process.env.PORT || 5001;
     const startServer = () => {
         try {
             console.log(`🚀 Starting server on port ${PORT}...`);
-            serverInstance = app.listen(PORT, () => {
+            
+const httpServer = createServer(app);
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+io.use(async (socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) return next(new Error("No token"));
+  try {
+    const { verifyAccessToken } = await import('./utils/jwt.js');
+    const decoded = verifyAccessToken(token);
+    socket.handshake.auth.userId = decoded.user.id;
+    next();
+  } catch {
+    return next(new Error("Invalid token"));
+  }
+});
+
+setupSocketEvents(io);
+
+serverInstance = httpServer.listen(PORT, () => {
                 console.log(`✅ Server running on port ${PORT} and ready to accept connections.`);
                 logger.info(`Server running on port ${PORT} and ready to accept connections.`, { environment: process.env.NODE_ENV });
             });
@@ -558,7 +567,6 @@ if (isMainModule) {
             process.exit(1);
         }
     };
-    
     if (!isTestEnv && mongoose.connection.readyState !== 1) {
         logger.info("Server not started yet, waiting for MongoDB connection...");
         mongoose.connection.once('open', () => {

@@ -75,3 +75,5 @@ consolidated_output.txt
 
 # Ignore all uploaded image files
 public/uploads/images/*
+
+*.zip

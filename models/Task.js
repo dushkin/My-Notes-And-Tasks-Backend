@@ -1,12 +1,10 @@
 import mongoose from "mongoose";
-
 const ReminderSchema = new mongoose.Schema({
   dateTime: { type: Date, required: true },
   repeat: { type: String, default: null },
   snoozedUntil: { type: Date, default: null },
   enabled: { type: Boolean, default: true },
 });
-
 const TaskSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -19,6 +17,5 @@ const TaskSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
 const Task = mongoose.model("Task", TaskSchema);
 export default Task;

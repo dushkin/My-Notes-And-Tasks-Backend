@@ -2,7 +2,6 @@ import express from "express";
 import Task from "../models/Task.js";
 
 const router = express.Router();
-
 // Set or update reminder for a task
 router.patch("/:taskId/reminder", async (req, res) => {
   try {
@@ -23,7 +22,6 @@ router.patch("/:taskId/reminder", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 // Clear reminder
 router.delete("/:taskId/reminder", async (req, res) => {
   try {
@@ -41,5 +39,4 @@ router.delete("/:taskId/reminder", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 export default router;

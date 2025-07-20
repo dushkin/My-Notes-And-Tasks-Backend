@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "7.3.0",
-  "commitMessage": "Support cross devices reminders",
+  "version": "7.4.0",
+  "commitMessage": "Support multi device notifications sync",
   "description": "",
   "main": "server.js",
   "type": "module",
@@ -39,6 +39,7 @@
     "path-to-regexp": "^8.2.0",
     "resend": "^4.6.0",
     "sharp": "^0.34.2",
+    "socket.io": "^4.8.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^11.1.0",
