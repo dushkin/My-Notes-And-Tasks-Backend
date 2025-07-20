@@ -147,7 +147,7 @@ export const createItem = catchAsync(async (req, res, next) => {
     user.notesTree = currentTree;
     user.markModified('notesTree');
     await user.save();
-    emitToUser(user._id.toString(), 'itemCreated', newItem);
+    emitToUser(user._id.toString(), 'itemCreated', { newItem, parentId });
     logger.info('Item created successfully', { userId, itemId: newItem.id, type, label: trimmedLabel, parentId });
     res.status(201).json(newItem);
 });
