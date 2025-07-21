@@ -165,3 +165,7 @@ class ReminderService {
 
 export default new ReminderService();
 export { calculateNextReminderTime };
+// Emit after reminder is set or triggered
+export async function emitReminderSet(userId, reminder) {
+  emitToUser(userId, "reminder_set", reminder);
+}
