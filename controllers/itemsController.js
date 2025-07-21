@@ -13,8 +13,6 @@ import {
 import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
 import logger from '../config/logger.js';
 
-// ... (keep the addMissingTimestampsToTree function as is) ...
-
 function addMissingTimestampsToTree(nodes, defaultTimestamp) {
     if (!Array.isArray(nodes)) {
         return [];
@@ -33,7 +31,6 @@ function addMissingTimestampsToTree(nodes, defaultTimestamp) {
         return processedNode;
     });
 }
-
 
 export const getNotesTree = catchAsync(async (req, res, next) => {
     const userId = req.user.id;
@@ -66,8 +63,7 @@ export const getItem = catchAsync(async (req, res, next) => {
     }
 
     let currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
-    const
-        itemSearchResult = findItemRecursive(currentTree, itemId);
+    const itemSearchResult = findItemRecursive(currentTree, itemId);
 
     if (!itemSearchResult || !itemSearchResult.item) {
         logger.warn('Item not found for retrieval', { userId, itemId });
@@ -88,9 +84,7 @@ export const createItem = catchAsync(async (req, res, next) => {
 
     const user = await User.findById(userId);
     if (!user) {
-        logger.warn('User not found for item creation', {
-            userId
-        });
+        logger.warn('User not found for item creation', { userId });
         return next(new AppError('User not found', 404));
     }
 
@@ -147,7 +141,18 @@ export const createItem = catchAsync(async (req, res, next) => {
     user.notesTree = currentTree;
     user.markModified('notesTree');
     await user.save();
-    emitToUser(user._id.toString(), 'itemCreated', { newItem, parentId });
+    
+    // Wrap socket emission in try-catch to prevent server crashes
+    try {
+        emitToUser(user._id.toString(), 'itemCreated', { newItem, parentId });
+    } catch (socketError) {
+        logger.error('Socket emission failed for itemCreated', { 
+            userId, 
+            itemId: newItem.id, 
+            error: socketError.message 
+        });
+    }
+    
     logger.info('Item created successfully', { userId, itemId: newItem.id, type, label: trimmedLabel, parentId });
     res.status(201).json(newItem);
 });
@@ -164,8 +169,7 @@ export const updateItem = catchAsync(async (req, res, next) => {
         return next(new AppError('User not found', 404));
     }
 
-    let currentTree =
-        Array.isArray(user.notesTree) ? user.notesTree : [];
+    let currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
     logger.debug('Current tree before update attempt', { userId, itemId, treeSize: currentTree.length });
 
     const originalItemSearchResult = findItemRecursive(currentTree, itemId);
@@ -201,7 +205,18 @@ export const updateItem = catchAsync(async (req, res, next) => {
     user.markModified('notesTree');
     logger.debug('notesTree marked as modified, attempting save', { userId, itemId });
     await user.save();
-    emitToUser(user._id.toString(), 'itemUpdated', itemAfterInMemoryUpdate);
+    
+    // Wrap socket emission in try-catch to prevent server crashes
+    try {
+        emitToUser(user._id.toString(), 'itemUpdated', itemAfterInMemoryUpdate);
+    } catch (socketError) {
+        logger.error('Socket emission failed for itemUpdated', { 
+            userId, 
+            itemId, 
+            error: socketError.message 
+        });
+    }
+    
     logger.info('Item updated successfully', { userId, itemId });
     res.status(200).json(itemAfterInMemoryUpdate);
 });
@@ -219,7 +234,6 @@ export const deleteItem = catchAsync(async (req, res, next) => {
 
     let currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
 
-
     const itemExistsResult = findItemRecursive(currentTree, itemId);
 
     if (!itemExistsResult) {
@@ -231,7 +245,18 @@ export const deleteItem = catchAsync(async (req, res, next) => {
     user.notesTree = updatedTree;
     user.markModified('notesTree');
     await user.save();
-    emitToUser(user._id.toString(), 'itemDeleted', { itemId });
+    
+    // Wrap socket emission in try-catch to prevent server crashes
+    try {
+        emitToUser(user._id.toString(), 'itemDeleted', { itemId });
+    } catch (socketError) {
+        logger.error('Socket emission failed for itemDeleted', { 
+            userId, 
+            itemId, 
+            error: socketError.message 
+        });
+    }
+    
     logger.info('Item deleted successfully', { userId, itemId });
     res.status(200).json({ message: 'Item deleted successfully.' });
 });
@@ -247,10 +272,18 @@ export const deleteTree = catchAsync(async (req, res, next) => {
     user.notesTree = [];
     user.markModified('notesTree');
     await user.save();
-    emitToUser(user._id.toString(), 'treeReplaced', []); // 👈 CORRECTED: Notify clients
-    logger.info('Entire tree deleted successfully', {
-        userId
-    });
+    
+    // Wrap socket emission in try-catch to prevent server crashes
+    try {
+        emitToUser(user._id.toString(), 'treeReplaced', []);
+    } catch (socketError) {
+        logger.error('Socket emission failed for treeReplaced', { 
+            userId, 
+            error: socketError.message 
+        });
+    }
+    
+    logger.info('Entire tree deleted successfully', { userId });
     res.status(200).json({ message: 'Tree deleted successfully' });
 });
 
@@ -271,13 +304,21 @@ export const replaceUserTree = catchAsync(async (req, res, next) => {
     user.notesTree = processedNewTree;
     user.markModified('notesTree');
     const savedUser = await user.save();
-    emitToUser(user._id.toString(), 'treeReplaced', user.notesTree);
+    
+    // Wrap socket emission in try-catch to prevent server crashes
+    try {
+        emitToUser(user._id.toString(), 'treeReplaced', user.notesTree);
+    } catch (socketError) {
+        logger.error('Socket emission failed for treeReplaced', { 
+            userId, 
+            error: socketError.message 
+        });
+    }
 
     logger.info('User tree replaced successfully', { userId });
     res.status(200).json({
         message: 'Tree replaced successfully.',
-        notesTree: savedUser.notesTree ||
-            []
+        notesTree: savedUser.notesTree || []
     });
 });
 
@@ -330,6 +371,17 @@ export const moveItem = catchAsync(async (req, res, next) => {
     user.notesTree = currentTree;
     user.markModified('notesTree');
     await user.save();
-    emitToUser(user._id.toString(), 'itemMoved', { itemId, newParentId });
+    
+    // Wrap socket emission in try-catch to prevent server crashes
+    try {
+        emitToUser(user._id.toString(), 'itemMoved', { itemId, newParentId });
+    } catch (socketError) {
+        logger.error('Socket emission failed for itemMoved', { 
+            userId, 
+            itemId, 
+            error: socketError.message 
+        });
+    }
+    
     res.status(200).json({ status: 'success', data: { movedItem: itemToMove } });
 });

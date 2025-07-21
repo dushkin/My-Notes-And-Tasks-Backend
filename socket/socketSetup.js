@@ -1,5 +1,5 @@
 import { Server } from "socket.io";
-import { setupSocketEvents } from "../socket/socketController.js";
+import { setupSocketEvents } from "./socketController.js";
 import { verifyAccessToken } from "../utils/jwt.js";
 
 export function setupWebSocket(server) {

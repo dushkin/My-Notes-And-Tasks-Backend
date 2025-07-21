@@ -640,14 +640,14 @@ if (isMainModule) {
             console.log(`🚀 Starting server on port ${PORT}...`);
 
             const httpServer = createServer(app);
-            const io = new SocketIOServer(httpServer, { cors: corsOptions }); // ✅ SINGLE instance
+            const io = new SocketIOServer(httpServer, { cors: corsOptions });
 
-            initSocketIO(io);
+            // Initialize existing socket events (if you have them)
+            if (typeof initSocketIO === 'function') {
+                initSocketIO(io);
+            }
 
-            io.on("connection", (socket) => {
-                console.log("🔗 Client connected:", socket.id);
-            });
-
+            // Socket authentication middleware
             io.use(async (socket, next) => {
                 const token = socket.handshake.auth?.token;
 
@@ -662,7 +662,7 @@ if (isMainModule) {
                 }
 
                 try {
-                    const { verifyAccessToken } = await import("./utils/jwt.js"); // or remove if already imported
+                    const { verifyAccessToken } = await import("./utils/jwt.js");
                     const decoded = verifyAccessToken(token);
 
                     console.log("✅ Token decoded:", decoded);
@@ -675,7 +675,12 @@ if (isMainModule) {
                 }
             });
 
+            // NEW: Set up our reminder socket events
             setupSocketEvents(io);
+
+            io.on("connection", (socket) => {
+                console.log("🔗 Client connected:", socket.id);
+            });
 
             serverInstance = httpServer.listen(PORT, () => {
                 console.log(

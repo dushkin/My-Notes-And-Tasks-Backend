@@ -1,18 +1,31 @@
 import { Server } from "socket.io";
+import jwt from 'jsonwebtoken';
 
 const connectedUsers = new Map();
 
 export function setupSocketEvents(io) {
   io.on("connection", (socket) => {
-    const userId = socket.userId;
-
     console.log("🔌 Incoming socket connection", {
-      userId: socket.handshake.auth?.userId,
-      headers: socket.handshake.headers,
+      socketId: socket.id,
+      auth: socket.handshake.auth
     });
 
+    // Extract userId from token
+    let userId = null;
+    try {
+      const token = socket.handshake.auth?.token;
+      if (token) {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        userId = decoded.user?.id || decoded.userId;
+        socket.userId = userId;
+      }
+    } catch (error) {
+      console.warn("❌ Invalid token in socket handshake:", error.message);
+      return socket.disconnect();
+    }
+
     if (!userId) {
-      console.warn("❌ Rejected socket connection: missing userId in handshake");
+      console.warn("❌ Rejected socket connection: missing userId");
       return socket.disconnect();
     }
 
@@ -26,6 +39,22 @@ export function setupSocketEvents(io) {
     // Add the socket to the user's connections
     connectedUsers.get(userId).push(socket);
     console.log(`User ${userId} connected. Total connections: ${connectedUsers.get(userId).length}`);
+
+    // NEW: Reminder relay events - just forward to all user's devices
+    socket.on('reminder:set', (reminderData) => {
+      console.log(`Relaying reminder:set for user ${userId}:`, reminderData);
+      emitToUser(userId, 'reminder:set', reminderData);
+    });
+
+    socket.on('reminder:clear', (data) => {
+      console.log(`Relaying reminder:clear for user ${userId}:`, data);
+      emitToUser(userId, 'reminder:clear', data);
+    });
+
+    socket.on('reminder:update', (reminderData) => {
+      console.log(`Relaying reminder:update for user ${userId}:`, reminderData);
+      emitToUser(userId, 'reminder:update', reminderData);
+    });
 
     // Handle disconnect
     socket.on("disconnect", (reason) => {
