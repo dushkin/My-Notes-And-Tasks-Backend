@@ -495,30 +495,23 @@ app.use((req, res, next) => {
     next();
 });
 
-console.log("📁 Setting up static file serving...");
-const publicUploadsPath = path.join(__dirname, "public", "Uploads");
-app.use("/uploads", imageCorsMiddleware);
-app.use(
-    "/uploads",
-    express.static(publicUploadsPath, {
-        maxAge: "1y",
-        etag: true,
-        lastModified: true,
-        setHeaders: (res, path) => {
-            if (path.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
-                res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-                res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
-            }
-        },
-    })
-);
-logger.info("Static file serving configured for /uploads", {
-    path: publicUploadsPath,
-    corsEnabled: true,
+// CRITICAL FIX: API-specific middleware (comes BEFORE static files)
+console.log("🔑 Setting up API middleware...");
+app.use('/api', (req, res, next) => {
+    console.log('🔍 API request:', req.method, req.path, req.url);
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
+
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+
+    next();
 });
 
+// MOVED UP: Utility file routes (BEFORE static files)
 console.log("🛠️ Setting up utility file routes...");
-// Serve the utility files with proper MIME types
 app.get('/src/utils/SyncManager.js', (req, res) => {
     res.type('application/javascript');
     res.sendFile(path.join(__dirname, 'src', 'utils', 'SyncManager.js'));
@@ -529,35 +522,43 @@ app.get('/src/utils/clientInit.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'src', 'utils', 'clientInit.js'));
 });
 
-// Serve PWA static files
-console.log("📱 Setting up PWA static files...");
-const publicPath = path.join(__dirname, "public");
-app.use(express.static(publicPath, {
-    maxAge: "1h",
-    etag: true,
-    lastModified: true,
-    setHeaders: (res, path) => {
-        // Service worker should not be cached
-        if (path.endsWith('sw.js')) {
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-            res.setHeader('Service-Worker-Allowed', '/');
-        }
-        // Web manifest
-        if (path.endsWith('.webmanifest')) {
-            res.setHeader('Content-Type', 'application/manifest+json');
-        }
+// MOVED UP: VAPID key endpoint (BEFORE static files)
+console.log("🔑 Setting up VAPID key endpoint...");
+app.get('/api/vapid-key', (req, res) => {
+    console.log('🔑 VAPID key requested');
+    if (!process.env.VAPID_PUBLIC_KEY) {
+        return res.status(503).json({
+            error: 'Push notifications not configured'
+        });
     }
+
+    res.json({
+        publicKey: process.env.VAPID_PUBLIC_KEY
+    });
+});
+
+// Push subscription endpoint
+app.post('/api/push-subscription', authMiddleware, catchAsync(async (req, res, next) => {
+    const subscription = req.body;
+    const userId = req.user.id;
+
+    logger.info('New push subscription received', { userId });
+
+    // Store subscription in your database here
+    // This is where you'd save the subscription to your existing user model
+
+    res.json({ success: true, message: 'Subscription saved successfully' });
 }));
 
+// MOVED UP: Paddle configuration (BEFORE static files)
 console.log("💳 Setting up Paddle configuration...");
-// Paddle environment and base URL (dynamic between sandbox and live)
 const PADDLE_ENV =
     process.env.NODE_ENV === "production" ? "production" : "sandbox";
 const PADDLE_BASE_URL =
     PADDLE_ENV === "production"
         ? "https://api.paddle.com"
         : "https://sandbox-api.paddle.com";
-console.log("🛒 Setting up Paddle transaction route...");
+
 app.post(
     "/api/paddle/create-transaction",
     authMiddleware,
@@ -631,46 +632,8 @@ app.post(
     })
 );
 
-console.log("🔑 Setting up VAPID key endpoint...");
-// VAPID key endpoint for push notifications
-app.get('/api/vapid-key', (req, res) => {
-    if (!process.env.VAPID_PUBLIC_KEY) {
-        return res.status(503).json({
-            error: 'Push notifications not configured'
-        });
-    }
-
-    res.json({
-        publicKey: process.env.VAPID_PUBLIC_KEY
-    });
-});
-
-// Push subscription endpoint
-app.post('/api/push-subscription', authMiddleware, catchAsync(async (req, res, next) => {
-    const subscription = req.body;
-    const userId = req.user.id;
-
-    logger.info('New push subscription received', { userId });
-
-    // Store subscription in your database here
-    // This is where you'd save the subscription to your existing user model
-
-    res.json({ success: true, message: 'Subscription saved successfully' });
-}));
-
-const checkModule = (mod, name) => {
-    if (!mod) {
-        logger.error(`Module ${name} failed to import properly`);
-        try {
-            require.resolve(`./routes/${name}.js`);
-            logger.debug(`Module path exists: ./routes/${name}.js`);
-        } catch (e) {
-            logger.error(`Module path not found: ./routes/${name}.js`);
-        }
-    }
-};
-
-console.log("🛣️ Registering routes...");
+// MOVED UP: All API routes registration (BEFORE static files)
+console.log("🛣️ Registering API routes...");
 try {
     logger.debug("Registering routes...");
 
@@ -744,13 +707,7 @@ try {
 
     console.log("🔔 Registering reminders routes...");
     app.use("/api/reminders", reminderRoutes);
-    console.log("✅ Checking imported modules...");
-    checkModule(authRoutes, "authRoutes");
-    checkModule(itemsRoutes, "itemsRoutes");
-    checkModule(imageRoutes, "imageRoutes");
-    checkModule(accountRoutes, "accountRoutes");
-    checkModule(metaRoutes, "metaRoutes");
-    checkModule(paddleWebhook, "paddleWebhook");
+
     if (process.env.ENABLE_ADMIN_ROUTES !== "false") {
         console.log("🔧 Registering admin routes...");
         app.use("/api/admin", adminRoutes);
@@ -761,7 +718,7 @@ try {
         );
     }
 
-    console.log("✅ All routes registered successfully");
+    console.log("✅ All API routes registered successfully");
     logger.debug("All routes registered successfully.");
 } catch (err) {
     console.error("❌ Error registering routes:", err.message);
@@ -769,23 +726,84 @@ try {
     logger.error("Error registering routes:", {
         message: err.message,
         stack: err.stack,
-        // Add more debugging info:
         importedModules: {
             authRoutes: !!authRoutes,
             itemsRoutes: !!itemsRoutes,
             imageRoutes: !!imageRoutes,
             accountRoutes: !!accountRoutes,
-            syncRoutes: !!syncRoutes, // NEW
+            syncRoutes: !!syncRoutes,
         },
     });
     process.exit(1);
 }
 
-console.log("🏠 Setting up default route...");
-app.get("/", (req, res) => res.send("API is operational."));
+// NOW: Static file serving (AFTER API routes)
+console.log("📁 Setting up static file serving...");
+const publicUploadsPath = path.join(__dirname, "public", "Uploads");
+app.use("/uploads", imageCorsMiddleware);
+app.use(
+    "/uploads",
+    express.static(publicUploadsPath, {
+        maxAge: "1y",
+        etag: true,
+        lastModified: true,
+        setHeaders: (res, path) => {
+            if (path.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+                res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+                res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+            }
+        },
+    })
+);
+logger.info("Static file serving configured for /uploads", {
+    path: publicUploadsPath,
+    corsEnabled: true,
+});
+
+console.log("📱 Setting up PWA static files...");
+const publicPath = path.join(__dirname, "public");
+app.use(express.static(publicPath, {
+    maxAge: "1h",
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, path) => {
+        // Service worker should not be cached
+        if (path.endsWith('sw.js')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Service-Worker-Allowed', '/');
+        }
+        // Web manifest
+        if (path.endsWith('.webmanifest')) {
+            res.setHeader('Content-Type', 'application/manifest+json');
+        }
+    }
+}));
+
+// SPA FALLBACK: This must be LAST (after all API routes and static files)
+console.log("🏠 Setting up SPA fallback...");
+app.get('*', (req, res) => {
+    // Only serve index.html for non-API routes
+    if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API endpoint not found' });
+    }
+    res.sendFile(path.join(publicPath, 'index.html'));
+});
+
+// Error handlers (must be last)
 console.log("🔧 Setting up error handlers...");
-app.all("*", notFoundHandler);
 app.use(globalErrorHandler);
+
+const checkModule = (mod, name) => {
+    if (!mod) {
+        logger.error(`Module ${name} failed to import properly`);
+        try {
+            require.resolve(`./routes/${name}.js`);
+            logger.debug(`Module path exists: ./routes/${name}.js`);
+        } catch (e) {
+            logger.error(`Module path not found: ./routes/${name}.js`);
+        }
+    }
+};
 
 let serverInstance;
 const mainScriptPath = fileURLToPath(import.meta.url);
