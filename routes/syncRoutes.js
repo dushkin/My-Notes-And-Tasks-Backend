@@ -5,18 +5,6 @@ import logger from '../config/logger.js';
 
 const router = express.Router();
 
-// Public route for VAPID key (no auth required)
-router.get('/vapid-public-key', (req, res) => {
-    const publicKey = process.env.VAPID_PUBLIC_KEY;
-    if (!publicKey) {
-        return res.status(503).json({ 
-            success: false, 
-            message: 'VAPID keys not configured' 
-        });
-    }
-    res.status(200).json({ success: true, publicKey });
-});
-
 // All other routes require authentication
 router.use(authMiddleware);
 

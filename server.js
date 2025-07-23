@@ -567,34 +567,6 @@ try {
         }
     });
 
-    // FIXED: VAPID key endpoint (properly placed with other API routes)
-    console.log("🔑 Registering VAPID key endpoint...");
-    app.get('/api/vapid-key', (req, res) => {
-        console.log('🔑 VAPID key requested');
-        
-        try {
-            if (!process.env.VAPID_PUBLIC_KEY) {
-                logger.warn('VAPID public key not configured');
-                return res.status(503).json({
-                    error: 'Push notifications not configured',
-                    configured: false
-                });
-            }
-
-            logger.info('VAPID key endpoint accessed successfully');
-            res.json({
-                publicKey: process.env.VAPID_PUBLIC_KEY,
-                configured: true
-            });
-        } catch (error) {
-            logger.error('Error in VAPID key endpoint:', { error: error.message });
-            res.status(500).json({
-                error: 'Internal server error',
-                configured: false
-            });
-        }
-    });
-
     // Push subscription endpoint
     app.post('/api/push-subscription', authMiddleware, catchAsync(async (req, res, next) => {
         const subscription = req.body;
