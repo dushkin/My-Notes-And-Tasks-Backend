@@ -1,22 +1,18 @@
-import { emitToUser } from "../socket/socketController.js";
-import cron from 'node-cron';
-import User from '../models/User.js';
 import logger from '../config/logger.js';
-import { sendReminderNotification } from '../controllers/pushNotificationController.js';
-import { updateItemInTree } from '../utils/backendTreeUtils.js';
 
 /**
  * Calculates the next occurrence time for a repeating reminder.
- * @param {Date|number} currentTime - The time the last reminder was sent.
- * @param {object} repeatOptions - The repeat configuration { value, unit }.
- * @returns {Date|null} The next reminder time or null if invalid.
  */
 function calculateNextReminderTime(currentTime, repeatOptions) {
-    if (!repeatOptions || !repeatOptions.unit || !repeatOptions.interval) return null;
+    if (!repeatOptions || !repeatOptions.unit || !repeatOptions.interval) {
+        return null;
+    }
 
     const lastTime = new Date(currentTime);
     let nextTime = new Date(lastTime.getTime());
     const interval = parseInt(repeatOptions.interval, 10) || 0;
+
+    if (interval <= 0) return null;
 
     switch (repeatOptions.unit) {
         case 'seconds': nextTime.setSeconds(nextTime.getSeconds() + interval); break;
@@ -32,11 +28,14 @@ function calculateNextReminderTime(currentTime, repeatOptions) {
     return nextTime;
 }
 
+/**
+ * Minimal ReminderService class
+ */
 class ReminderService {
     constructor() {
-        this.cronJob = null;
         this.isRunning = false;
         this.isProcessing = false;
+        this.cronJob = null;
     }
 
     init() {
@@ -45,19 +44,34 @@ class ReminderService {
             return;
         }
 
-        const schedule = process.env.REMINDER_CHECK_SCHEDULE || '* * * * *';
-        this.cronJob = cron.schedule(schedule, () => {
-            if (!this.isProcessing) {
-                this.checkAndSendReminders();
-            } else {
-                logger.warn('Skipping reminder check cycle, previous cycle still running.');
-            }
-        }, {
-            scheduled: false,
-            timezone: process.env.CRON_TIMEZONE || 'UTC'
+        // Import cron dynamically to catch import errors
+        this.initializeCron().catch(error => {
+            logger.error('Failed to initialize cron:', { error: error.message });
+            // Service will work without cron (manual mode only)
         });
-        this.start();
-        logger.info('Reminder service initialized', { schedule });
+    }
+
+    async initializeCron() {
+        try {
+            const cron = await import('node-cron');
+            const schedule = process.env.REMINDER_CHECK_SCHEDULE || '* * * * *';
+            
+            this.cronJob = cron.default.schedule(schedule, () => {
+                if (!this.isProcessing) {
+                    this.checkAndSendReminders().catch(error => {
+                        logger.error('Error in reminder check:', { error: error.message });
+                    });
+                }
+            }, {
+                scheduled: false,
+                timezone: process.env.CRON_TIMEZONE || 'UTC'
+            });
+
+            this.start();
+            logger.info('Reminder service initialized', { schedule });
+        } catch (error) {
+            logger.error('Failed to initialize cron job:', { error: error.message });
+        }
     }
 
     start() {
@@ -65,6 +79,8 @@ class ReminderService {
             this.cronJob.start();
             this.isRunning = true;
             logger.info('Reminder service started');
+        } else {
+            logger.info('Reminder service: cron not available, running in manual mode');
         }
     }
 
@@ -75,28 +91,37 @@ class ReminderService {
             logger.info('Reminder service stopped');
         }
     }
-    
-    shutdown() {
+
+    async shutdown() {
         this.stop();
+        if (this.cronJob) {
+            this.cronJob.destroy();
+        }
         logger.info('Reminder service shutdown completed');
     }
 
     findDueReminders(notesTree, currentTime) {
         const due = [];
+        
         const findRecursive = (nodes) => {
             if (!Array.isArray(nodes)) return;
+            
             for (const item of nodes) {
-                if (item && item.type === 'task' && item.reminder?.timestamp) {
+                if (!item) continue;
+                
+                if (item.type === 'task' && item.reminder?.timestamp) {
                     const reminderTime = new Date(item.reminder.timestamp).getTime();
                     if (reminderTime <= currentTime) {
                         due.push({ ...item });
                     }
                 }
-                if (item && item.type === 'folder' && Array.isArray(item.children)) {
+                
+                if (item.type === 'folder' && Array.isArray(item.children)) {
                     findRecursive(item.children);
                 }
             }
         };
+        
         findRecursive(notesTree);
         return due;
     }
@@ -104,11 +129,14 @@ class ReminderService {
     async checkAndSendReminders() {
         this.isProcessing = true;
         const now = Date.now();
-        logger.debug('Checking for due reminders', { timestamp: new Date(now).toISOString() });
-
+        
         try {
+            // Import dependencies dynamically
+            const User = (await import('../models/User.js')).default;
+            
             const usersWithReminders = await User.find({ 
-                'notesTree.reminder.timestamp': { $lte: now } 
+                'notesTree.reminder.timestamp': { $lte: now },
+                isVerified: true
             }).select('_id email notesTree');
 
             if (usersWithReminders.length === 0) {
@@ -119,11 +147,9 @@ class ReminderService {
             for (const user of usersWithReminders) {
                 await this.processUserReminders(user, now);
             }
+
         } catch (error) {
-            logger.error('Error during reminder check:', {
-                error: error.message,
-                stack: error.stack
-            });
+            logger.error('Error during reminder check:', { error: error.message });
         } finally {
             this.isProcessing = false;
         }
@@ -139,19 +165,39 @@ class ReminderService {
         let currentTree = user.notesTree;
 
         for (const item of dueReminders) {
-            await sendReminderNotification(user._id, item.label, item.id, item.reminder.timestamp);
-            emitToUser(user._id.toString(), 'reminderTriggered', { itemId: item.id, reminderTime: new Date() });
+            try {
+                // Import dependencies dynamically
+                const { sendReminderNotification } = await import('../controllers/pushNotificationController.js');
+                const { emitToUser } = await import('../socket/socketController.js');
+                const { updateItemInTree } = await import('../utils/backendTreeUtils.js');
 
-            let nextReminder = null;
-            if (item.reminder.repeatOptions) {
-                const nextTime = calculateNextReminderTime(item.reminder.timestamp, item.reminder.repeatOptions);
-                if (nextTime) {
-                    nextReminder = { ...item.reminder, timestamp: nextTime.getTime() };
+                // Send notifications
+                await sendReminderNotification(user._id, item.label, item.id, item.reminder.timestamp);
+                emitToUser(user._id.toString(), 'reminderTriggered', { 
+                    itemId: item.id, 
+                    reminderTime: new Date(),
+                    itemLabel: item.label
+                });
+
+                // Handle repeating reminders
+                let nextReminder = null;
+                if (item.reminder.repeatOptions) {
+                    const nextTime = calculateNextReminderTime(item.reminder.timestamp, item.reminder.repeatOptions);
+                    if (nextTime) {
+                        nextReminder = { ...item.reminder, timestamp: nextTime.getTime() };
+                    }
                 }
+                
+                currentTree = updateItemInTree(currentTree, item.id, { reminder: nextReminder });
+                treeWasModified = true;
+
+            } catch (reminderError) {
+                logger.error('Error processing individual reminder:', {
+                    userId: user._id,
+                    itemId: item.id,
+                    error: reminderError.message
+                });
             }
-            
-            currentTree = updateItemInTree(currentTree, item.id, { reminder: nextReminder });
-            treeWasModified = true;
         }
 
         if (treeWasModified) {
@@ -161,11 +207,28 @@ class ReminderService {
             logger.info('Updated reminders in user tree', { userId: user._id });
         }
     }
+
+    getStatus() {
+        return {
+            isRunning: this.isRunning,
+            isProcessing: this.isProcessing,
+            cronJobExists: !!this.cronJob
+        };
+    }
 }
 
-export default new ReminderService();
-export { calculateNextReminderTime };
-// Emit after reminder is set or triggered
+// Create singleton
+const reminderService = new ReminderService();
+
+// Export functions
 export async function emitReminderSet(userId, reminder) {
-  emitToUser(userId, "reminder_set", reminder);
+    try {
+        const { emitToUser } = await import('../socket/socketController.js');
+        emitToUser(userId, "reminder_set", reminder);
+    } catch (error) {
+        logger.error('Error emitting reminder set:', { error: error.message });
+    }
 }
+
+export default reminderService;
+export { calculateNextReminderTime };

@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Sync Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .results-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 PWA Sync Test Dashboard</h1>
+    
+    <div class="card">
+        <h3>📡 Server Connection Tests</h3>
+        <button id="testHealthBtn">Test Health Check</button>
+        <button id="testVapidBtn">Test VAPID Key</button>
+        <button id="testSyncBtn">Test Sync Status</button>
+        <div id="serverStatus"></div>
+    </div>
+
+    <div class="card">
+        <h3>🔔 Push Notification Tests</h3>
+        <button id="checkPermBtn">Check Permission</button>
+        <button id="requestPermBtn">Request Permission</button>
+        <button id="testSWBtn">Test Service Worker</button>
+        <button id="subscribePushBtn">Subscribe to Push</button>
+        <button id="testPushBtn">Send Test Push</button>
+        <div id="notificationStatus"></div>
+    </div>
+
+    <div class="card">
+        <h3>📱 PWA Features</h3>
+        <button id="checkPWABtn">Check PWA Support</button>
+        <button id="testOfflineBtn">Test Offline</button>
+        <div id="pwaStatus"></div>
+    </div>
+
+    <div class="card">
+        <h3>📊 Test Results</h3>
+        <div class="results-container" id="results"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5001';
+        const resultsDiv = document.getElementById('results');
+
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = message;
+            resultsDiv.appendChild(div);
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+
+        function logJSON(data, title = 'Response') {
+            const div = document.createElement('div');
+            div.innerHTML = `<strong>${title}:</strong><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            resultsDiv.appendChild(div);
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+
+        async function testHealth() {
+            log('🏥 Testing health check...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/health`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    log('✅ Health check passed', 'success');
+                    logJSON(data, 'Health Status');
+                    
+                    if (data.pwaSyncStatus) {
+                        log(`🚀 PWA Sync: ${data.pwaSyncStatus.enabled ? 'Enabled' : 'Disabled'}`, 
+                            data.pwaSyncStatus.enabled ? 'success' : 'error');
+                        log(`🔧 Device Sync Service: ${data.pwaSyncStatus.deviceSyncService}`, 'info');
+                    }
+                } else {
+                    log('❌ Health check failed', 'error');
+                    logJSON(data, 'Error Response');
+                }
+            } catch (error) {
+                log(`❌ Health check error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testVapidKey() {
+            log('🔑 Testing VAPID key...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/sync/vapid-public-key`);
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    log('✅ VAPID key retrieved successfully', 'success');
+                    log(`🗝️ Key: ${data.publicKey.substring(0, 20)}...`, 'info');
+                    window.vapidPublicKey = data.publicKey;
+                } else {
+                    log('❌ VAPID key failed', 'error');
+                    logJSON(data, 'Error Response');
+                }
+            } catch (error) {
+                log(`❌ VAPID key error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testSyncStatus() {
+            log('🔄 Testing sync status (without auth)...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/sync/status`);
+                const data = await response.json();
+                
+                if (response.status === 401) {
+                    log('🔐 Sync status requires authentication (expected)', 'info');
+                    log('ℹ️ This means the endpoint is working correctly', 'success');
+                } else if (response.ok) {
+                    log('✅ Sync status retrieved', 'success');
+                    logJSON(data, 'Sync Status');
+                } else {
+                    log('⚠️ Unexpected sync status response', 'error');
+                    logJSON(data, 'Response');
+                }
+            } catch (error) {
+                log(`❌ Sync status error: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkNotificationPermission() {
+            log('🔔 Checking notification permission...', 'info');
+            
+            if (!('Notification' in window)) {
+                log('❌ This browser does not support notifications', 'error');
+                return;
+            }
+
+            const permission = Notification.permission;
+            log(`📋 Current permission: ${permission}`, 'info');
+            
+            switch (permission) {
+                case 'granted':
+                    log('✅ Notifications are allowed', 'success');
+                    document.getElementById('requestPermBtn').disabled = true;
+                    break;
+                case 'denied':
+                    log('❌ Notifications are blocked', 'error');
+                    break;
+                case 'default':
+                    log('⏳ Notifications permission not set', 'info');
+                    break;
+            }
+
+            document.getElementById('notificationStatus').innerHTML = 
+                `<div class="status info">Permission: <strong>${permission}</strong></div>`;
+        }
+
+        async function requestNotificationPermission() {
+            log('🔔 Requesting notification permission...', 'info');
+            
+            if (!('Notification' in window)) {
+                log('❌ This browser does not support notifications', 'error');
+                return;
+            }
+
+            try {
+                const permission = await Notification.requestPermission();
+                log(`📋 Permission result: ${permission}`, 'info');
+                
+                if (permission === 'granted') {
+                    log('✅ Notification permission granted!', 'success');
+                    
+                    new Notification('🎉 PWA Test', {
+                        body: 'Notifications are working!'
+                    });
+                    
+                    document.getElementById('requestPermBtn').disabled = true;
+                } else {
+                    log('❌ Notification permission denied', 'error');
+                }
+            } catch (error) {
+                log(`❌ Permission request error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testServiceWorker() {
+            log('🔧 Testing Service Worker support...', 'info');
+            
+            if (!('serviceWorker' in navigator)) {
+                log('❌ Service Worker not supported', 'error');
+                return;
+            }
+
+            log('✅ Service Worker supported', 'success');
+            
+            try {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                log(`📋 Found ${registrations.length} service worker registrations`, 'info');
+                
+                registrations.forEach((registration, index) => {
+                    log(`SW ${index + 1}: ${registration.scope}`, 'info');
+                });
+                
+                if (registrations.length === 0) {
+                    log('ℹ️ No service workers registered yet', 'info');
+                    log('💡 You can register one by adding sw.js to your public folder', 'info');
+                }
+            } catch (error) {
+                log(`❌ Service Worker check error: ${error.message}`, 'error');
+            }
+        }
+
+        async function subscribeToPush() {
+            log('📱 Subscribing to push notifications...', 'info');
+            
+            if (!window.vapidPublicKey) {
+                log('❌ VAPID key not available. Run VAPID key test first.', 'error');
+                return;
+            }
+            
+            try {
+                const registration = await navigator.serviceWorker.getRegistration();
+                if (!registration) {
+                    log('❌ Service worker not registered', 'error');
+                    return;
+                }
+                
+                // Convert VAPID key
+                const applicationServerKey = urlBase64ToUint8Array(window.vapidPublicKey);
+                
+                // Subscribe to push notifications
+                const subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: applicationServerKey
+                });
+                
+                log('✅ Push subscription created successfully!', 'success');
+                window.pushSubscription = subscription;
+                
+                // Send subscription to server (this will fail without auth, but shows the flow)
+                try {
+                    const response = await fetch(`${API_BASE}/api/push/subscribe`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                            // Note: Missing auth header for demo purposes
+                        },
+                        body: JSON.stringify(subscription.toJSON())
+                    });
+                    
+                    if (response.ok) {
+                        log('✅ Subscription sent to server successfully!', 'success');
+                    } else {
+                        log('🔐 Subscription created but server requires authentication', 'info');
+                        log('ℹ️ In a real app, you would send your JWT token', 'info');
+                    }
+                } catch (error) {
+                    log('ℹ️ Subscription created locally. Server communication would require auth.', 'info');
+                }
+                
+            } catch (error) {
+                log(`❌ Push subscription failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function sendTestPush() {
+            log('🧪 Testing push notification...', 'info');
+            
+            if (!window.pushSubscription) {
+                log('❌ No push subscription. Subscribe first.', 'error');
+                return;
+            }
+            
+            // Simulate receiving a push notification
+            try {
+                const testNotification = new Notification('🧪 Test Push Notification', {
+                    body: 'This simulates a push notification from your server!',
+                    tag: 'test-push',
+                    requireInteraction: false
+                });
+                
+                log('✅ Test push notification displayed!', 'success');
+                log('ℹ️ In production, this would come from your server via the push service', 'info');
+                
+            } catch (error) {
+                log(`❌ Test notification failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkPWASupport() {
+            log('📱 Checking PWA support...', 'info');
+            
+            const features = {
+                'Service Worker': 'serviceWorker' in navigator,
+                'Push Manager': 'PushManager' in window,
+                'Notification API': 'Notification' in window,
+                'IndexedDB': 'indexedDB' in window,
+                'Cache API': 'caches' in window,
+                'Background Sync': 'serviceWorker' in navigator && 'sync' in window.ServiceWorkerRegistration.prototype
+            };
+
+            let supportedCount = 0;
+            const totalFeatures = Object.keys(features).length;
+
+            for (const [feature, supported] of Object.entries(features)) {
+                if (supported) {
+                    supportedCount++;
+                    log(`✅ ${feature}: Supported`, 'success');
+                } else {
+                    log(`❌ ${feature}: Not supported`, 'error');
+                }
+            }
+
+            const supportPercentage = Math.round((supportedCount / totalFeatures) * 100);
+            log(`📊 PWA Support: ${supportedCount}/${totalFeatures} features (${supportPercentage}%)`, 
+                supportPercentage >= 80 ? 'success' : 'error');
+
+            document.getElementById('pwaStatus').innerHTML = 
+                `<div class="status ${supportPercentage >= 80 ? 'success' : 'error'}">
+                    PWA Support: ${supportPercentage}% (${supportedCount}/${totalFeatures} features)
+                </div>`;
+        }
+
+        async function testOfflineCapabilities() {
+            log('📡 Testing offline capabilities...', 'info');
+            
+            log(`🌐 Online status: ${navigator.onLine ? 'Online' : 'Offline'}`, 
+                navigator.onLine ? 'success' : 'error');
+            
+            if ('caches' in window) {
+                try {
+                    const cacheNames = await caches.keys();
+                    log(`💾 Found ${cacheNames.length} caches`, 'info');
+                    cacheNames.forEach(name => {
+                        log(`  - ${name}`, 'info');
+                    });
+                    
+                    if (cacheNames.length === 0) {
+                        log('ℹ️ No caches found. Service worker not active yet.', 'info');
+                    }
+                } catch (error) {
+                    log(`❌ Cache check error: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        // Convert VAPID key from base64 to Uint8Array
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding)
+                .replace(/-/g, '+')
+                .replace(/_/g, '/');
+            
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        // Service Worker Registration
+        async function registerServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                try {
+                    log('🔧 Registering service worker...', 'info');
+                    const registration = await navigator.serviceWorker.register('/sw.js', {
+                        scope: '/'
+                    });
+                    
+                    log('✅ Service Worker registered successfully!', 'success');
+                    log(`📋 Scope: ${registration.scope}`, 'info');
+                    
+                    // Listen for updates
+                    registration.addEventListener('updatefound', () => {
+                        log('🔄 Service Worker update found', 'info');
+                    });
+                    
+                    // Check if service worker is ready
+                    if (registration.active) {
+                        log('🚀 Service Worker is active and ready', 'success');
+                    }
+                    
+                } catch (error) {
+                    log(`❌ Service Worker registration failed: ${error.message}`, 'error');
+                }
+            } else {
+                log('❌ Service Worker not supported in this browser', 'error');
+            }
+        }
+
+        // Event listeners (CSP-safe)
+        document.addEventListener('DOMContentLoaded', () => {
+            // Register service worker first
+            registerServiceWorker();
+            
+            // Bind event listeners
+            document.getElementById('testHealthBtn').addEventListener('click', testHealth);
+            document.getElementById('testVapidBtn').addEventListener('click', testVapidKey);
+            document.getElementById('testSyncBtn').addEventListener('click', testSyncStatus);
+            document.getElementById('checkPermBtn').addEventListener('click', checkNotificationPermission);
+            document.getElementById('requestPermBtn').addEventListener('click', requestNotificationPermission);
+            document.getElementById('testSWBtn').addEventListener('click', testServiceWorker);
+            document.getElementById('subscribePushBtn').addEventListener('click', subscribeToPush);
+            document.getElementById('testPushBtn').addEventListener('click', sendTestPush);
+            document.getElementById('checkPWABtn').addEventListener('click', checkPWASupport);
+            document.getElementById('testOfflineBtn').addEventListener('click', testOfflineCapabilities);
+            
+            // Initialize
+            log('🚀 PWA Test Dashboard loaded', 'success');
+            log('Click buttons above to test different features', 'info');
+            checkNotificationPermission();
+        });
+
+        // Network status monitoring
+        window.addEventListener('online', () => {
+            log('🌐 Back online!', 'success');
+        });
+
+        window.addEventListener('offline', () => {
+            log('📡 Gone offline!', 'error');
+        });
+    </script>
+</body>
+</html>

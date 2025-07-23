@@ -66,7 +66,8 @@ let authMiddleware,
     imageCorsMiddleware,
     logger,
     scheduledTasksService,
-    reminderService;
+    reminderService,
+    deviceSyncService; // NEW: Import device sync service
 let authRoutes,
     itemsRoutes,
     imageRoutes,
@@ -75,7 +76,8 @@ let authRoutes,
     paddleWebhook,
     adminRoutes,
     pushNotificationRoutes,
-    reminderRoutes;
+    reminderRoutes,
+    syncRoutes; // NEW: Import sync routes
 try {
     console.log("📦 Importing core modules...");
     express = (await import("express")).default;
@@ -116,6 +118,16 @@ try {
     scheduledTasksService = (await import("./services/scheduledTasksService.js"))
         .default;
     reminderService = (await import("./services/reminderService.js")).default;
+    
+    // NEW: Import device sync service
+    try {
+        deviceSyncService = (await import("./services/deviceSyncService.js")).default;
+        console.log("✅ Device sync service imported successfully");
+    } catch (syncErr) {
+        console.warn("⚠️ Device sync service not available:", syncErr.message);
+        deviceSyncService = null;
+    }
+    
     console.log("✅ Services imported successfully");
 } catch (err) {
     console.error("❌ Failed to import services:", err.message);
@@ -135,6 +147,16 @@ try {
     pushNotificationRoutes = (await import("./routes/pushNotificationRoutes.js"))
         .default;
     reminderRoutes = (await import("./routes/reminderRoutes.js")).default;
+    
+    // NEW: Import sync routes
+    try {
+        syncRoutes = (await import("./routes/syncRoutes.js")).default;
+        console.log("✅ Sync routes imported successfully");
+    } catch (syncErr) {
+        console.warn("⚠️ Sync routes not available:", syncErr.message);
+        syncRoutes = null;
+    }
+    
     console.log("✅ Route modules imported successfully");
 } catch (err) {
     console.error("❌ Failed to import route modules:", err.message);
@@ -157,7 +179,8 @@ const app = express();
 
 console.log("🏗️ Initializing Express app...");
 logger.info("Application starting...", { node_env: process.env.NODE_ENV });
-// Environment variables check
+
+// Environment variables check (includes new PWA sync variables)
 logger.debug("Environment Variables Check", {
     ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS ? "Set" : "Not Set",
     FRONTEND_URL: process.env.FRONTEND_URL ? "Set" : "Not Set",
@@ -169,6 +192,12 @@ logger.debug("Environment Variables Check", {
         ? "Set"
         : "Not Set",
     PADDLE_API_KEY: process.env.PADDLE_API_KEY ? "Set" : "Not Set",
+    
+    // NEW: PWA Sync environment variables
+    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY ? "Set" : "Not Set",
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY ? "Set" : "Not Set",
+    VAPID_SUBJECT: process.env.VAPID_SUBJECT ? "Set" : "Not Set (will use default)",
+    
     BETA_ENABLED: process.env.BETA_ENABLED ? "Set" : "Not Set (default: false)",
     BETA_USER_LIMIT: process.env.BETA_USER_LIMIT
         ? "Set"
@@ -203,6 +232,14 @@ if (!isTestEnv && !PADDLE_API_KEY) {
     logger.error("FATAL ERROR: PADDLE_API_KEY is not defined. Exiting.");
     process.exit(1);
 }
+
+// NEW: Check PWA sync environment variables (warnings only, not fatal)
+if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    logger.warn("PWA sync environment variables not set. Push notifications will not work. Generate VAPID keys and set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY.");
+} else {
+    logger.info("PWA sync environment variables configured successfully");
+}
+
 console.log("✅ Environment variables check passed");
 
 // MongoDB connection setup
@@ -222,6 +259,9 @@ if (!isTestEnv) {
             logger.info("Successfully connected to MongoDB.");
             console.log("✅ MongoDB connected");
             initializeScheduledTasks();
+            
+            // NEW: Initialize device sync service
+            initializeDeviceSyncService();
         })
         .catch((err) => {
             logger.error("Initial MongoDB connection error. Exiting.", {
@@ -284,6 +324,27 @@ function initializeScheduledTasks() {
         logger.warn(
             "Continuing without scheduled tasks due to initialization error"
         );
+    }
+}
+
+// NEW: Initialize device sync service
+function initializeDeviceSyncService() {
+    if (!deviceSyncService) {
+        logger.info("Device sync service not available, skipping initialization");
+        return;
+    }
+    
+    console.log("🔄 Initializing device sync service...");
+    try {
+        deviceSyncService.startPeriodicCleanup();
+        logger.info("Device sync service initialized successfully");
+        console.log("✅ Device sync service initialized");
+    } catch (error) {
+        logger.error("Failed to initialize device sync service", {
+            error: error.message,
+            stack: error.stack
+        });
+        logger.warn("Continuing without device sync service due to initialization error");
     }
 }
 
@@ -430,6 +491,27 @@ logger.info("Static file serving configured for /uploads", {
     path: publicUploadsPath,
     corsEnabled: true,
 });
+
+// NEW: Serve PWA static files
+console.log("📱 Setting up PWA static files...");
+const publicPath = path.join(__dirname, "public");
+app.use(express.static(publicPath, {
+    maxAge: "1h",
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, path) => {
+        // Service worker should not be cached
+        if (path.endsWith('sw.js')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Service-Worker-Allowed', '/');
+        }
+        // Web manifest
+        if (path.endsWith('.webmanifest')) {
+            res.setHeader('Content-Type', 'application/manifest+json');
+        }
+    }
+}));
+
 console.log("💳 Setting up Paddle configuration...");
 // Paddle environment and base URL (dynamic between sandbox and live)
 const PADDLE_ENV =
@@ -551,6 +633,11 @@ try {
                             ? "running"
                             : "disabled",
                 },
+                // NEW: PWA sync status
+                pwaSyncStatus: {
+                    enabled: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
+                    deviceSyncService: deviceSyncService ? "available" : "not available"
+                }
             });
         } else {
             logger.warn(
@@ -581,6 +668,15 @@ try {
 
     console.log("🔔 Registering push notification routes...");
     app.use("/api/push", pushNotificationRoutes);
+
+    // NEW: Register sync routes
+    if (syncRoutes) {
+        console.log("🔄 Registering sync routes...");
+        app.use("/api/sync", syncRoutes);
+        logger.debug("syncRoutes registered.");
+    } else {
+        logger.info("Sync routes not available, skipping registration");
+    }
 
     console.log("🔔 Registering reminders routes...");
     app.use("/api/reminders", reminderRoutes);
@@ -615,6 +711,7 @@ try {
             itemsRoutes: !!itemsRoutes,
             imageRoutes: !!imageRoutes,
             accountRoutes: !!accountRoutes,
+            syncRoutes: !!syncRoutes, // NEW
         },
     });
     process.exit(1);
@@ -675,11 +772,40 @@ if (isMainModule) {
                 }
             });
 
-            // NEW: Set up our reminder socket events
-            setupSocketEvents(io);
+            // Set up socket events (including reminder socket events)
+            if (typeof setupSocketEvents === 'function') {
+                setupSocketEvents(io);
+            }
 
             io.on("connection", (socket) => {
-                console.log("🔗 Client connected:", socket.id);
+                console.log("🔗 Client connected:", socket.id, "User:", socket.userId);
+                
+                // NEW: Handle device sync events
+                socket.on("device-register", async (deviceInfo) => {
+                    try {
+                        if (deviceSyncService) {
+                            await deviceSyncService.registerDevice(socket.userId, deviceInfo);
+                            socket.emit("device-registered", { success: true });
+                            console.log("📱 Device registered via socket:", deviceInfo.id);
+                        }
+                    } catch (error) {
+                        socket.emit("device-register-error", { error: error.message });
+                        console.error("❌ Device registration failed:", error);
+                    }
+                });
+
+                socket.on("sync-request", async () => {
+                    try {
+                        if (deviceSyncService) {
+                            await deviceSyncService.syncUserData(socket.userId);
+                            socket.emit("sync-complete", { success: true });
+                            console.log("🔄 Sync requested via socket for user:", socket.userId);
+                        }
+                    } catch (error) {
+                        socket.emit("sync-error", { error: error.message });
+                        console.error("❌ Sync failed:", error);
+                    }
+                });
             });
 
             serverInstance = httpServer.listen(PORT, () => {
@@ -688,7 +814,11 @@ if (isMainModule) {
                 );
                 logger.info(
                     `Server running on port ${PORT} and ready to accept connections.`,
-                    { environment: process.env.NODE_ENV }
+                    { 
+                        environment: process.env.NODE_ENV,
+                        pwaSyncEnabled: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
+                        deviceSyncService: deviceSyncService ? "available" : "not available"
+                    }
                 );
             });
             handleUnhandledRejection(serverInstance);
@@ -729,8 +859,14 @@ const shutdown = async (signal) => {
     try {
         await scheduledTasksService.shutdown();
         await reminderService.shutdown();
+        
+        // NEW: Shutdown device sync service
+        if (deviceSyncService && typeof deviceSyncService.shutdown === 'function') {
+            await deviceSyncService.shutdown();
+            logger.info("Device sync service shut down successfully");
+        }
     } catch (error) {
-        logger.error("Error shutting down scheduled tasks service:", {
+        logger.error("Error shutting down services:", {
             message: error.message,
             stack: error.stack,
         });

@@ -1,7 +1,7 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "7.4.9",
-  "commitMessage": "Multi device notifications sync - fixes",
+  "version": "7.5.0",
+  "commitMessage": "Enhanced PWA Sync - phase 1",
   "description": "",
   "main": "server.js",
   "type": "module",

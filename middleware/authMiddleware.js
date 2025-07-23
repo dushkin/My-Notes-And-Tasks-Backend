@@ -30,11 +30,63 @@ const authMiddleware = async (req, res, next) => {
             return next(new AppError('Not authorized, user not found', 401));
         }
 
+        // NEW: Enhanced user object attachment for PWA sync
         req.user = user; // User object (with toJSON applied by model) is attached
-        logger.debug('authMiddleware: User attached to request', { userId: user.id, email: user.email, path: req.path });
+        
+        // NEW: Extract device ID from headers for sync tracking
+        const deviceId = req.header('X-Device-ID') || req.header('Device-ID');
+        if (deviceId) {
+            req.deviceId = deviceId;
+            logger.debug('authMiddleware: Device ID extracted', { 
+                userId: user.id, 
+                deviceId: deviceId.substring(0, 10) + "...",
+                path: req.path 
+            });
+        }
+
+        // NEW: Update user activity for PWA sync (non-blocking)
+        setImmediate(async () => {
+            try {
+                const shouldUpdateActivity = 
+                    // Update activity for sync-related endpoints
+                    req.path.startsWith('/api/sync/') ||
+                    req.path.startsWith('/api/push/') ||
+                    // Or if device ID is provided
+                    deviceId ||
+                    // Or periodically for general usage
+                    Math.random() < 0.1; // 10% of requests to avoid DB overhead
+
+                if (shouldUpdateActivity) {
+                    await user.recordLogin(deviceId);
+                    logger.debug('authMiddleware: User activity updated', { 
+                        userId: user.id, 
+                        deviceId,
+                        path: req.path 
+                    });
+                }
+            } catch (error) {
+                // Don't fail the request if activity update fails
+                logger.debug('authMiddleware: Failed to update user activity', { 
+                    userId: user.id, 
+                    error: error.message 
+                });
+            }
+        });
+
+        logger.debug('authMiddleware: User authenticated successfully', { 
+            userId: user.id, 
+            email: user.email, 
+            deviceId,
+            path: req.path 
+        });
         next();
     } catch (err) {
-        logger.error('authMiddleware: Error during token verification', { message: err.message, name: err.name, path: req.path, ip: req.ip });
+        logger.error('authMiddleware: Error during token verification', { 
+            message: err.message, 
+            name: err.name, 
+            path: req.path, 
+            ip: req.ip 
+        });
         if (err.name === 'JsonWebTokenError') {
             return next(new AppError('Invalid token', 401));
         }

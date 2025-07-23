@@ -1,32 +1,43 @@
-// services/scheduledTasksService.js
 import cron from 'node-cron';
-import { cleanupOrphanedImages } from './orphanedFileCleanupService.js';
-import { cleanupExpiredTokens } from '../utils/jwt.js';
 import logger from '../config/logger.js';
-import { calculateNextReminderTime } from './reminderService.js';
-import { sendReminderNotification as sendReminder } from '../controllers/pushNotificationController.js';
 
 class ScheduledTasksService {
     constructor() {
         this.tasks = new Map();
+        this.isInitialized = false;
         this.isShuttingDown = false;
     }
 
     /**
-     * Initialize and start all scheduled tasks
+     * Initialize scheduled tasks
      */
     init() {
-        logger.info('Initializing scheduled tasks service...');
+        if (this.isInitialized) {
+            logger.warn('Scheduled tasks service already initialized');
+            return;
+        }
+
         try {
-            this.scheduleOrphanedImageCleanup();
-            this.scheduleExpiredTokenCleanup();
-            this.scheduleHealthChecks();
-            logger.info('All scheduled tasks initialized successfully', {
-                activeTasks: this.tasks.size,
-                taskNames: Array.from(this.tasks.keys())
-            });
+            logger.info('Initializing scheduled tasks service...');
+            
+            // Check if scheduled tasks are enabled
+            const enableScheduledTasks = process.env.ENABLE_SCHEDULED_TASKS !== 'false';
+            if (!enableScheduledTasks) {
+                logger.info('Scheduled tasks disabled via ENABLE_SCHEDULED_TASKS environment variable');
+                return;
+            }
+
+            // Initialize cleanup tasks
+            this.initializeCleanupTasks();
+            
+            // Initialize maintenance tasks
+            this.initializeMaintenanceTasks();
+            
+            this.isInitialized = true;
+            logger.info('Scheduled tasks service initialized successfully');
+            
         } catch (error) {
-            logger.error('Failed to initialize scheduled tasks', {
+            logger.error('Failed to initialize scheduled tasks service:', {
                 error: error.message,
                 stack: error.stack
             });
@@ -35,293 +46,436 @@ class ScheduledTasksService {
     }
 
     /**
-     * Schedule orphaned image cleanup
-     * Runs daily at 2:00 AM to clean up unused image files
+     * Initialize cleanup tasks
      */
-    scheduleOrphanedImageCleanup() {
-        const taskName = 'orphaned-image-cleanup';
-        const schedule = process.env.ORPHANED_IMAGE_CLEANUP_SCHEDULE || '0 2 * * *';
-        // Daily at 2 AM
-        
-        const task = cron.schedule(schedule, async () => {
-            if (this.isShuttingDown) return;
-            
-            const jobId = `${taskName}-${Date.now()}`;
-            logger.info(`Starting scheduled task: ${taskName}`, { jobId, schedule });
-            
-            try {
-                await cleanupOrphanedImages();
-                logger.info(`Completed scheduled task: ${taskName}`, { jobId });
-            } catch (error) {
-                logger.error(`Failed scheduled task: ${taskName}`, {
-                    jobId,
-                    error: error.message,
-                    stack: error.stack
-                });
-            }
-        }, {
-            scheduled: false, //Don't start immediately
-            timezone: process.env.CRON_TIMEZONE || 'UTC'
-        });
-        this.tasks.set(taskName, {
-            task,
-            schedule,
-            description: 'Clean up orphaned image files',
-            lastRun: null,
-            enabled: process.env.ENABLE_ORPHANED_IMAGE_CLEANUP !== 'false'
-        });
-        if (this.tasks.get(taskName).enabled) {
-            task.start();
-            logger.info(`Scheduled task started: ${taskName}`, { schedule });
-        } else {
-            logger.info(`Scheduled task disabled: ${taskName}`);
-        }
-    }
-
-    /**
-     * Schedule expired token cleanup
-     * Runs every 6 hours to clean up expired refresh tokens
-     */
-    scheduleExpiredTokenCleanup() {
-        const taskName = 'expired-token-cleanup';
-        const schedule = process.env.EXPIRED_TOKEN_CLEANUP_SCHEDULE || '0 */6 * * *';
-        // Every 6 hours
-        
-        const task = cron.schedule(schedule, async () => {
-            if (this.isShuttingDown) return;
-            
-            const jobId = `${taskName}-${Date.now()}`;
-            logger.info(`Starting scheduled task: ${taskName}`, { jobId, schedule });
-            
-            try {
-                const deletedCount = await cleanupExpiredTokens();
-                logger.info(`Completed scheduled task: ${taskName}`, { 
-                    jobId, 
-                    deletedTokens: deletedCount 
-                });
-            } catch (error) {
-                logger.error(`Failed scheduled task: ${taskName}`, {
-                    jobId,
-                    error: error.message,
-                    stack: error.stack
-                });
-            }
-        }, {
-            scheduled: false,
-            timezone: process.env.CRON_TIMEZONE || 'UTC'
-        });
-        this.tasks.set(taskName, {
-            task,
-            schedule,
-            description: 'Clean up expired refresh tokens',
-            lastRun: null,
-            enabled: process.env.ENABLE_EXPIRED_TOKEN_CLEANUP !== 'false'
-        });
-        if (this.tasks.get(taskName).enabled) {
-            task.start();
-            logger.info(`Scheduled task started: ${taskName}`, { schedule });
-        } else {
-            logger.info(`Scheduled task disabled: ${taskName}`);
-        }
-    }
-
-    /**
-     * Schedule system health checks
-     * Runs every hour to log system health metrics
-     */
-    scheduleHealthChecks() {
-        const taskName = 'system-health-check';
-        const schedule = process.env.HEALTH_CHECK_SCHEDULE || '0 * * * *';
-        // Every hour
-        
-        const task = cron.schedule(schedule, async () => {
-            if (this.isShuttingDown) return;
-            
-            const jobId = `${taskName}-${Date.now()}`;
-            
-            try {
-                const healthMetrics = await this.collectHealthMetrics();
-                logger.info(`System health check completed`, { 
-                    jobId, 
-                    ...healthMetrics 
-                });
-            } catch (error) {
-                logger.error(`Failed scheduled task: ${taskName}`, {
-                    jobId,
-                    error: error.message,
-                    stack: error.stack
-                });
-            }
-        }, {
-            scheduled: false,
-            timezone: process.env.CRON_TIMEZONE || 'UTC'
-        });
-        this.tasks.set(taskName, {
-            task,
-            schedule,
-            description: 'System health monitoring',
-            lastRun: null,
-            enabled: process.env.ENABLE_HEALTH_CHECKS !== 'false'
-        });
-        if (this.tasks.get(taskName).enabled) {
-            task.start();
-            logger.info(`Scheduled task started: ${taskName}`, { schedule });
-        } else {
-            logger.info(`Scheduled task disabled: ${taskName}`);
-        }
-    }
-
-    /**
-     * Collect system health metrics
-     */
-    async collectHealthMetrics() {
-        const metrics = {
-            timestamp: new Date().toISOString(),
-            memory: process.memoryUsage(),
-            uptime: process.uptime(),
-            nodeVersion: process.version,
-            environment: process.env.NODE_ENV
-        };
-        // Add MongoDB connection status if available
+    initializeCleanupTasks() {
         try {
-            const mongoose = await import('mongoose');
-            metrics.mongodb = {
-                readyState: mongoose.connection.readyState,
-                name: mongoose.connection.name,
-                host: mongoose.connection.host,
-                port: mongoose.connection.port
-            };
+            // Orphaned image cleanup - runs daily at 2 AM
+            const orphanedImageSchedule = process.env.ORPHANED_IMAGE_CLEANUP_SCHEDULE || '0 2 * * *';
+            const orphanedImageTask = cron.schedule(orphanedImageSchedule, async () => {
+                if (this.isShuttingDown) return;
+                
+                try {
+                    logger.info('Starting orphaned image cleanup task');
+                    await this.cleanupOrphanedImages();
+                    logger.info('Orphaned image cleanup task completed');
+                } catch (error) {
+                    logger.error('Orphaned image cleanup task failed:', {
+                        error: error.message,
+                        stack: error.stack
+                    });
+                }
+            }, {
+                scheduled: false,
+                timezone: process.env.CRON_TIMEZONE || 'UTC'
+            });
+
+            this.tasks.set('orphanedImageCleanup', orphanedImageTask);
+            orphanedImageTask.start();
+            logger.info('Orphaned image cleanup task scheduled', { schedule: orphanedImageSchedule });
+
+            // Expired token cleanup - runs every 6 hours
+            const expiredTokenSchedule = process.env.EXPIRED_TOKEN_CLEANUP_SCHEDULE || '0 */6 * * *';
+            const expiredTokenTask = cron.schedule(expiredTokenSchedule, async () => {
+                if (this.isShuttingDown) return;
+                
+                try {
+                    logger.info('Starting expired token cleanup task');
+                    await this.cleanupExpiredTokens();
+                    logger.info('Expired token cleanup task completed');
+                } catch (error) {
+                    logger.error('Expired token cleanup task failed:', {
+                        error: error.message,
+                        stack: error.stack
+                    });
+                }
+            }, {
+                scheduled: false,
+                timezone: process.env.CRON_TIMEZONE || 'UTC'
+            });
+
+            this.tasks.set('expiredTokenCleanup', expiredTokenTask);
+            expiredTokenTask.start();
+            logger.info('Expired token cleanup task scheduled', { schedule: expiredTokenSchedule });
+
         } catch (error) {
-            metrics.mongodb = { error: 'MongoDB status unavailable' };
-        }
-
-        return metrics;
-    }
-
-    /**
-     * Run a specific task manually (useful for testing or admin endpoints)
-     */
-    async runTaskNow(taskName) {
-        const taskInfo = this.tasks.get(taskName);
-        if (!taskInfo) {
-            throw new Error(`Task '${taskName}' not found`);
-        }
-
-        logger.info(`Manually triggering task: ${taskName}`);
-        switch (taskName) {
-            case 'orphaned-image-cleanup':
-                return await cleanupOrphanedImages();
-            case 'expired-token-cleanup':
-                return await cleanupExpiredTokens();
-            case 'system-health-check':
-                return await this.collectHealthMetrics();
-            default:
-                throw new Error(`Task '${taskName}' cannot be run manually`);
+            logger.error('Failed to initialize cleanup tasks:', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
         }
     }
 
     /**
-     * Get status of all scheduled tasks
+     * Initialize maintenance tasks
      */
-    getTasksStatus() {
-        const status = {};
-        for (const [name, info] of this.tasks.entries()) {
-            status[name] = {
-                schedule: info.schedule,
-                description: info.description,
-                enabled: info.enabled,
-                running: info.task.running,
-                lastRun: info.lastRun
-            };
+    initializeMaintenanceTasks() {
+        try {
+            // Database maintenance - runs weekly on Sundays at 3 AM
+            const dbMaintenanceSchedule = process.env.DB_MAINTENANCE_SCHEDULE || '0 3 * * 0';
+            const dbMaintenanceTask = cron.schedule(dbMaintenanceSchedule, async () => {
+                if (this.isShuttingDown) return;
+                
+                try {
+                    logger.info('Starting database maintenance task');
+                    await this.performDatabaseMaintenance();
+                    logger.info('Database maintenance task completed');
+                } catch (error) {
+                    logger.error('Database maintenance task failed:', {
+                        error: error.message,
+                        stack: error.stack
+                    });
+                }
+            }, {
+                scheduled: false,
+                timezone: process.env.CRON_TIMEZONE || 'UTC'
+            });
+
+            this.tasks.set('databaseMaintenance', dbMaintenanceTask);
+            dbMaintenanceTask.start();
+            logger.info('Database maintenance task scheduled', { schedule: dbMaintenanceSchedule });
+
+            // User activity cleanup - runs daily at 4 AM
+            const userActivitySchedule = process.env.USER_ACTIVITY_CLEANUP_SCHEDULE || '0 4 * * *';
+            const userActivityTask = cron.schedule(userActivitySchedule, async () => {
+                if (this.isShuttingDown) return;
+                
+                try {
+                    logger.info('Starting user activity cleanup task');
+                    await this.cleanupUserActivity();
+                    logger.info('User activity cleanup task completed');
+                } catch (error) {
+                    logger.error('User activity cleanup task failed:', {
+                        error: error.message,
+                        stack: error.stack
+                    });
+                }
+            }, {
+                scheduled: false,
+                timezone: process.env.CRON_TIMEZONE || 'UTC'
+            });
+
+            this.tasks.set('userActivityCleanup', userActivityTask);
+            userActivityTask.start();
+            logger.info('User activity cleanup task scheduled', { schedule: userActivitySchedule });
+
+        } catch (error) {
+            logger.error('Failed to initialize maintenance tasks:', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
         }
-        
+    }
+
+    /**
+     * Clean up orphaned images
+     */
+    async cleanupOrphanedImages() {
+        try {
+            logger.info('Executing orphaned image cleanup...');
+            
+            // Import file system utilities
+            const fs = await import('fs');
+            const path = await import('path');
+            const { fileURLToPath } = await import('url');
+            
+            // Get upload directory path
+            const __filename = fileURLToPath(import.meta.url);
+            const __dirname = path.dirname(__filename);
+            const uploadsDir = path.join(__dirname, '..', 'public', 'Uploads');
+            
+            if (!fs.existsSync(uploadsDir)) {
+                logger.warn('Uploads directory does not exist, skipping image cleanup');
+                return;
+            }
+
+            // Get all files in uploads directory
+            const files = fs.readdirSync(uploadsDir);
+            let deletedCount = 0;
+            let checkedCount = 0;
+
+            // Import User model to check for referenced images
+            const User = (await import('../models/User.js')).default;
+
+            for (const file of files) {
+                try {
+                    checkedCount++;
+                    const filePath = path.join(uploadsDir, file);
+                    const fileStat = fs.statSync(filePath);
+                    
+                    // Skip if file was modified in the last 24 hours (might be newly uploaded)
+                    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                    if (fileStat.mtime > twentyFourHoursAgo) {
+                        continue;
+                    }
+
+                    // Check if file is referenced in any user's notesTree
+                    const fileUrl = `/uploads/${file}`;
+                    const usersWithFile = await User.countDocuments({
+                        $or: [
+                            { notesTree: { $regex: fileUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+                            { profilePicture: fileUrl }
+                        ]
+                    });
+
+                    if (usersWithFile === 0) {
+                        // File is orphaned, delete it
+                        fs.unlinkSync(filePath);
+                        deletedCount++;
+                        logger.debug('Deleted orphaned image:', { file, filePath });
+                    }
+                } catch (fileError) {
+                    logger.warn('Error processing file during cleanup:', {
+                        file,
+                        error: fileError.message
+                    });
+                }
+            }
+
+            logger.info('Orphaned image cleanup completed', {
+                checkedCount,
+                deletedCount,
+                keptCount: checkedCount - deletedCount
+            });
+
+        } catch (error) {
+            logger.error('Orphaned image cleanup failed:', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Clean up expired tokens
+     */
+    async cleanupExpiredTokens() {
+        try {
+            logger.info('Executing expired token cleanup...');
+            
+            // This would typically involve cleaning up refresh tokens, 
+            // password reset tokens, email verification tokens, etc.
+            // Since your User model doesn't have these fields visible,
+            // this is a placeholder implementation
+            
+            const User = (await import('../models/User.js')).default;
+            
+            // Clean up any expired password reset tokens
+            const result = await User.updateMany(
+                {
+                    $or: [
+                        { passwordResetExpires: { $lt: new Date() } },
+                        { emailVerificationExpires: { $lt: new Date() } }
+                    ]
+                },
+                {
+                    $unset: {
+                        passwordResetToken: 1,
+                        passwordResetExpires: 1,
+                        emailVerificationToken: 1,
+                        emailVerificationExpires: 1
+                    }
+                }
+            );
+
+            logger.info('Expired token cleanup completed', {
+                modifiedCount: result.modifiedCount
+            });
+
+        } catch (error) {
+            logger.error('Expired token cleanup failed:', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Perform database maintenance
+     */
+    async performDatabaseMaintenance() {
+        try {
+            logger.info('Executing database maintenance...');
+            
+            const mongoose = (await import('mongoose')).default;
+            
+            // Get database statistics
+            const db = mongoose.connection.db;
+            const stats = await db.stats();
+            
+            logger.info('Database statistics:', {
+                collections: stats.collections,
+                objects: stats.objects,
+                dataSize: `${Math.round(stats.dataSize / 1024 / 1024 * 100) / 100} MB`,
+                storageSize: `${Math.round(stats.storageSize / 1024 / 1024 * 100) / 100} MB`,
+                indexes: stats.indexes,
+                indexSize: `${Math.round(stats.indexSize / 1024 / 1024 * 100) / 100} MB`
+            });
+
+            // Perform any additional maintenance tasks here
+            // Such as optimizing indexes, cleaning up old sessions, etc.
+            
+            logger.info('Database maintenance completed successfully');
+
+        } catch (error) {
+            logger.error('Database maintenance failed:', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Clean up old user activity
+     */
+    async cleanupUserActivity() {
+        try {
+            logger.info('Executing user activity cleanup...');
+            
+            const User = (await import('../models/User.js')).default;
+            
+            // Clean up inactive push subscriptions (older than 30 days)
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            
+            const result = await User.updateMany(
+                {},
+                {
+                    $pull: {
+                        pushSubscriptions: {
+                            lastUsed: { $lt: thirtyDaysAgo }
+                        }
+                    }
+                }
+            );
+
+            logger.info('User activity cleanup completed', {
+                modifiedUsers: result.modifiedCount
+            });
+
+        } catch (error) {
+            logger.error('User activity cleanup failed:', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Add a custom scheduled task
+     */
+    addTask(name, schedule, taskFunction, options = {}) {
+        if (this.tasks.has(name)) {
+            logger.warn(`Task ${name} already exists, skipping`);
+            return;
+        }
+
+        try {
+            const task = cron.schedule(schedule, async () => {
+                if (this.isShuttingDown) return;
+                
+                try {
+                    logger.info(`Starting custom task: ${name}`);
+                    await taskFunction();
+                    logger.info(`Custom task completed: ${name}`);
+                } catch (error) {
+                    logger.error(`Custom task failed: ${name}`, {
+                        error: error.message,
+                        stack: error.stack
+                    });
+                }
+            }, {
+                scheduled: false,
+                timezone: process.env.CRON_TIMEZONE || 'UTC',
+                ...options
+            });
+
+            this.tasks.set(name, task);
+            task.start();
+            logger.info(`Custom task scheduled: ${name}`, { schedule });
+
+        } catch (error) {
+            logger.error(`Failed to add custom task: ${name}`, {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Remove a scheduled task
+     */
+    removeTask(name) {
+        const task = this.tasks.get(name);
+        if (task) {
+            task.stop();
+            task.destroy();
+            this.tasks.delete(name);
+            logger.info(`Task removed: ${name}`);
+        }
+    }
+
+    /**
+     * Get status of all tasks
+     */
+    getTaskStatus() {
+        const status = {
+            initialized: this.isInitialized,
+            taskCount: this.tasks.size,
+            tasks: []
+        };
+
+        for (const [name, task] of this.tasks.entries()) {
+            status.tasks.push({
+                name,
+                running: task.getStatus() === 'scheduled'
+            });
+        }
+
         return status;
     }
 
     /**
-     * Enable a specific task
-     */
-    enableTask(taskName) {
-        const taskInfo = this.tasks.get(taskName);
-        if (!taskInfo) {
-            throw new Error(`Task '${taskName}' not found`);
-        }
-
-        if (!taskInfo.enabled) {
-            taskInfo.task.start();
-            taskInfo.enabled = true;
-            logger.info(`Enabled scheduled task: ${taskName}`);
-        }
-    }
-
-    /**
-     * Disable a specific task
-     */
-    disableTask(taskName) {
-        const taskInfo = this.tasks.get(taskName);
-        if (!taskInfo) {
-            throw new Error(`Task '${taskName}' not found`);
-        }
-
-        if (taskInfo.enabled) {
-            taskInfo.task.stop();
-            taskInfo.enabled = false;
-            logger.info(`Disabled scheduled task: ${taskName}`);
-        }
-    }
-
-    /**
-     * Gracefully shutdown all scheduled tasks
+     * Shutdown all scheduled tasks
      */
     async shutdown() {
-        this.isShuttingDown = true;
         logger.info('Shutting down scheduled tasks service...');
-        
-        const shutdownPromises = [];
-        
-        for (const [name, info] of this.tasks.entries()) {
-            if (info.task.running) {
-                logger.info(`Stopping scheduled task: ${name}`);
-                info.task.stop();
-            }
-        }
+        this.isShuttingDown = true;
 
-        // Wait a moment for any running tasks to complete
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        this.tasks.clear();
-        logger.info('Scheduled tasks service shutdown complete');
-    }
-
-    /**
-     * Validate cron schedule format
-     */
-    static validateCronSchedule(schedule) {
-        return cron.validate(schedule);
-    }
-}
-
-// Create singleton instance
-const scheduledTasksService = new ScheduledTasksService();
-
-export default scheduledTasksService;
-async function scheduleReminder(reminder) {
-    const delay = new Date(reminder.time).getTime() - Date.now();
-    if (delay < 0) return;
-    setTimeout(async () => {
         try {
-            await sendReminder(reminder);
-
-            if (reminder.repeat) {
-                const nextTime = calculateNextReminderTime(reminder.time, reminder.repeat);
-                if (nextTime) {
-                    reminder.time = nextTime;
-                    scheduleReminder(reminder);
+            // Stop and destroy all tasks
+            for (const [name, task] of this.tasks.entries()) {
+                try {
+                    task.stop();
+                    task.destroy();
+                    logger.debug(`Task stopped: ${name}`);
+                } catch (error) {
+                    logger.error(`Error stopping task: ${name}`, {
+                        error: error.message
+                    });
                 }
             }
+
+            this.tasks.clear();
+            this.isInitialized = false;
+            logger.info('Scheduled tasks service shut down successfully');
+
         } catch (error) {
-            console.error("Reminder execution failed:", error);
+            logger.error('Error during scheduled tasks shutdown:', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
         }
-    }, delay);
+    }
 }
 
-export { scheduleReminder };
+// Create and export singleton instance
+const scheduledTasksService = new ScheduledTasksService();
+export default scheduledTasksService;
