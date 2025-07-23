@@ -118,7 +118,7 @@ try {
     scheduledTasksService = (await import("./services/scheduledTasksService.js"))
         .default;
     reminderService = (await import("./services/reminderService.js")).default;
-    
+
     // NEW: Import device sync service
     try {
         deviceSyncService = (await import("./services/deviceSyncService.js")).default;
@@ -127,7 +127,7 @@ try {
         console.warn("⚠️ Device sync service not available:", syncErr.message);
         deviceSyncService = null;
     }
-    
+
     console.log("✅ Services imported successfully");
 } catch (err) {
     console.error("❌ Failed to import services:", err.message);
@@ -147,7 +147,7 @@ try {
     pushNotificationRoutes = (await import("./routes/pushNotificationRoutes.js"))
         .default;
     reminderRoutes = (await import("./routes/reminderRoutes.js")).default;
-    
+
     // NEW: Import sync routes
     try {
         syncRoutes = (await import("./routes/syncRoutes.js")).default;
@@ -156,7 +156,7 @@ try {
         console.warn("⚠️ Sync routes not available:", syncErr.message);
         syncRoutes = null;
     }
-    
+
     console.log("✅ Route modules imported successfully");
 } catch (err) {
     console.error("❌ Failed to import route modules:", err.message);
@@ -192,12 +192,12 @@ logger.debug("Environment Variables Check", {
         ? "Set"
         : "Not Set",
     PADDLE_API_KEY: process.env.PADDLE_API_KEY ? "Set" : "Not Set",
-    
+
     // NEW: PWA Sync environment variables
     VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY ? "Set" : "Not Set",
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY ? "Set" : "Not Set",
     VAPID_SUBJECT: process.env.VAPID_SUBJECT ? "Set" : "Not Set (will use default)",
-    
+
     BETA_ENABLED: process.env.BETA_ENABLED ? "Set" : "Not Set (default: false)",
     BETA_USER_LIMIT: process.env.BETA_USER_LIMIT
         ? "Set"
@@ -259,7 +259,7 @@ if (!isTestEnv) {
             logger.info("Successfully connected to MongoDB.");
             console.log("✅ MongoDB connected");
             initializeScheduledTasks();
-            
+
             // NEW: Initialize device sync service
             initializeDeviceSyncService();
         })
@@ -333,7 +333,7 @@ function initializeDeviceSyncService() {
         logger.info("Device sync service not available, skipping initialization");
         return;
     }
-    
+
     console.log("🔄 Initializing device sync service...");
     try {
         deviceSyncService.startPeriodicCleanup();
@@ -470,6 +470,31 @@ try {
     process.exit(1);
 }
 
+console.log("🔧 Setting up MIME type handling...");
+// Custom middleware to set proper MIME types for JavaScript files
+app.use((req, res, next) => {
+    const ext = path.extname(req.path).toLowerCase();
+
+    // Set proper MIME types to fix the "text/plain" issue
+    switch (ext) {
+        case '.js':
+        case '.mjs':
+            res.type('application/javascript');
+            break;
+        case '.css':
+            res.type('text/css');
+            break;
+        case '.json':
+            res.type('application/json');
+            break;
+        case '.webmanifest':
+            res.type('application/manifest+json');
+            break;
+    }
+
+    next();
+});
+
 console.log("📁 Setting up static file serving...");
 const publicUploadsPath = path.join(__dirname, "public", "Uploads");
 app.use("/uploads", imageCorsMiddleware);
@@ -492,7 +517,19 @@ logger.info("Static file serving configured for /uploads", {
     corsEnabled: true,
 });
 
-// NEW: Serve PWA static files
+console.log("🛠️ Setting up utility file routes...");
+// Serve the utility files with proper MIME types
+app.get('/src/utils/SyncManager.js', (req, res) => {
+    res.type('application/javascript');
+    res.sendFile(path.join(__dirname, 'src', 'utils', 'SyncManager.js'));
+});
+
+app.get('/src/utils/clientInit.js', (req, res) => {
+    res.type('application/javascript');
+    res.sendFile(path.join(__dirname, 'src', 'utils', 'clientInit.js'));
+});
+
+// Serve PWA static files
 console.log("📱 Setting up PWA static files...");
 const publicPath = path.join(__dirname, "public");
 app.use(express.static(publicPath, {
@@ -509,6 +546,44 @@ app.use(express.static(publicPath, {
         if (path.endsWith('.webmanifest')) {
             res.setHeader('Content-Type', 'application/manifest+json');
         }
+    }
+}));
+
+console.log("📱 Setting up PWA static files with proper headers...");
+app.use(express.static(publicPath, {
+    maxAge: process.env.NODE_ENV === 'production' ? "1y" : "0",
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+        const ext = path.extname(filePath).toLowerCase();
+
+        // Service worker should not be cached
+        if (filePath.endsWith('sw.js')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Service-Worker-Allowed', '/');
+            res.setHeader('Content-Type', 'application/javascript');
+        }
+        // JavaScript files
+        else if (ext === '.js' || ext === '.mjs') {
+            res.setHeader('Content-Type', 'application/javascript');
+            res.setHeader('Cache-Control', 'public, max-age=31536000');
+        }
+        // CSS files
+        else if (ext === '.css') {
+            res.setHeader('Content-Type', 'text/css');
+            res.setHeader('Cache-Control', 'public, max-age=31536000');
+        }
+        // Web manifest
+        else if (ext === '.webmanifest') {
+            res.setHeader('Content-Type', 'application/manifest+json');
+        }
+        // HTML files
+        else if (ext === '.html') {
+            res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+        }
+
+        // Security headers for all static files
+        res.setHeader('X-Content-Type-Options', 'nosniff');
     }
 }));
 
@@ -593,6 +668,33 @@ app.post(
         }
     })
 );
+
+console.log("🔑 Setting up VAPID key endpoint...");
+// VAPID key endpoint for push notifications
+app.get('/api/vapid-key', (req, res) => {
+    if (!process.env.VAPID_PUBLIC_KEY) {
+        return res.status(503).json({
+            error: 'Push notifications not configured'
+        });
+    }
+
+    res.json({
+        publicKey: process.env.VAPID_PUBLIC_KEY
+    });
+});
+
+// Push subscription endpoint
+app.post('/api/push-subscription', authMiddleware, catchAsync(async (req, res, next) => {
+    const subscription = req.body;
+    const userId = req.user.id;
+
+    logger.info('New push subscription received', { userId });
+
+    // Store subscription in your database here
+    // This is where you'd save the subscription to your existing user model
+
+    res.json({ success: true, message: 'Subscription saved successfully' });
+}));
 
 const checkModule = (mod, name) => {
     if (!mod) {
@@ -779,7 +881,7 @@ if (isMainModule) {
 
             io.on("connection", (socket) => {
                 console.log("🔗 Client connected:", socket.id, "User:", socket.userId);
-                
+
                 // NEW: Handle device sync events
                 socket.on("device-register", async (deviceInfo) => {
                     try {
@@ -814,7 +916,7 @@ if (isMainModule) {
                 );
                 logger.info(
                     `Server running on port ${PORT} and ready to accept connections.`,
-                    { 
+                    {
                         environment: process.env.NODE_ENV,
                         pwaSyncEnabled: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
                         deviceSyncService: deviceSyncService ? "available" : "not available"
@@ -859,7 +961,7 @@ const shutdown = async (signal) => {
     try {
         await scheduledTasksService.shutdown();
         await reminderService.shutdown();
-        
+
         // NEW: Shutdown device sync service
         if (deviceSyncService && typeof deviceSyncService.shutdown === 'function') {
             await deviceSyncService.shutdown();
