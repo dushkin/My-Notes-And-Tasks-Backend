@@ -549,44 +549,6 @@ app.use(express.static(publicPath, {
     }
 }));
 
-console.log("📱 Setting up PWA static files with proper headers...");
-app.use(express.static(publicPath, {
-    maxAge: process.env.NODE_ENV === 'production' ? "1y" : "0",
-    etag: true,
-    lastModified: true,
-    setHeaders: (res, filePath) => {
-        const ext = path.extname(filePath).toLowerCase();
-
-        // Service worker should not be cached
-        if (filePath.endsWith('sw.js')) {
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-            res.setHeader('Service-Worker-Allowed', '/');
-            res.setHeader('Content-Type', 'application/javascript');
-        }
-        // JavaScript files
-        else if (ext === '.js' || ext === '.mjs') {
-            res.setHeader('Content-Type', 'application/javascript');
-            res.setHeader('Cache-Control', 'public, max-age=31536000');
-        }
-        // CSS files
-        else if (ext === '.css') {
-            res.setHeader('Content-Type', 'text/css');
-            res.setHeader('Cache-Control', 'public, max-age=31536000');
-        }
-        // Web manifest
-        else if (ext === '.webmanifest') {
-            res.setHeader('Content-Type', 'application/manifest+json');
-        }
-        // HTML files
-        else if (ext === '.html') {
-            res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
-        }
-
-        // Security headers for all static files
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-    }
-}));
-
 console.log("💳 Setting up Paddle configuration...");
 // Paddle environment and base URL (dynamic between sandbox and live)
 const PADDLE_ENV =
