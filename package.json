@@ -1,6 +1,6 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "7.5.3",
+  "version": "7.5.4",
   "commitMessage": "Enhanced PWA Sync - fixes",
   "description": "",
   "main": "server.js",

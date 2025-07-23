@@ -522,117 +522,7 @@ app.get('/src/utils/clientInit.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'src', 'utils', 'clientInit.js'));
 });
 
-// MOVED UP: VAPID key endpoint (BEFORE static files)
-console.log("🔑 Setting up VAPID key endpoint...");
-app.get('/api/vapid-key', (req, res) => {
-    console.log('🔑 VAPID key requested');
-    if (!process.env.VAPID_PUBLIC_KEY) {
-        return res.status(503).json({
-            error: 'Push notifications not configured'
-        });
-    }
-
-    res.json({
-        publicKey: process.env.VAPID_PUBLIC_KEY
-    });
-});
-
-// Push subscription endpoint
-app.post('/api/push-subscription', authMiddleware, catchAsync(async (req, res, next) => {
-    const subscription = req.body;
-    const userId = req.user.id;
-
-    logger.info('New push subscription received', { userId });
-
-    // Store subscription in your database here
-    // This is where you'd save the subscription to your existing user model
-
-    res.json({ success: true, message: 'Subscription saved successfully' });
-}));
-
-// MOVED UP: Paddle configuration (BEFORE static files)
-console.log("💳 Setting up Paddle configuration...");
-const PADDLE_ENV =
-    process.env.NODE_ENV === "production" ? "production" : "sandbox";
-const PADDLE_BASE_URL =
-    PADDLE_ENV === "production"
-        ? "https://api.paddle.com"
-        : "https://sandbox-api.paddle.com";
-
-app.post(
-    "/api/paddle/create-transaction",
-    authMiddleware,
-    catchAsync(async (req, res, next) => {
-        console.log("▶️ Paddle env:", PADDLE_ENV);
-        console.log("▶️ Received body:", req.body);
-
-        const {
-            priceId,
-            quantity,
-            customerEmail,
-            customData,
-            successUrl,
-            cancelUrl,
-        } = req.body;
-
-        const userId = req.user.id;
-        const requestId = req.requestId;
-
-        logger.info("Creating Paddle transaction", { userId, priceId, requestId });
-
-        if (!priceId || !quantity) {
-            logger.warn("Invalid request: Missing priceId or quantity", {
-                userId,
-                requestId,
-                body: req.body,
-            });
-            return next(
-                new AppError("Missing required fields: priceId and quantity", 400)
-            );
-        }
-
-        try {
-            const response = await axios.post(
-                `${PADDLE_BASE_URL}/transactions`,
-                {
-                    items: [{ price_id: priceId, quantity }],
-                    customer_email: customerEmail || req.user.email,
-                    custom_data: customData || { userId },
-                    success_url: successUrl || `${process.env.FRONTEND_URL}/app`,
-                    cancel_url: cancelUrl || `${process.env.FRONTEND_URL}/#pricing`,
-                    collection_mode: "automatic",
-                },
-                {
-                    headers: {
-                        Authorization: `Bearer ${PADDLE_API_KEY}`,
-                        "Content-Type": "application/json",
-                    },
-                }
-            );
-            logger.info("Paddle transaction created", {
-                userId,
-                transactionId: response.data.data.id,
-                requestId,
-            });
-            return res.status(200).json({ transactionId: response.data.data.id });
-        } catch (err) {
-            logger.error("Paddle transaction creation failed", {
-                userId,
-                requestId,
-                status: err.response?.status,
-                paddleError: err.response?.data,
-            });
-            return next(
-                new AppError(
-                    err.response?.data?.message || "Failed to create transaction",
-                    err.response?.status || 500
-                )
-            );
-        }
-    })
-);
-
-// MOVED UP: All API routes registration (BEFORE static files)
+// All API routes registration (BEFORE static files)
 console.log("🛣️ Registering API routes...");
 try {
     logger.debug("Registering routes...");
@@ -676,6 +566,129 @@ try {
                 .json({ status: "DEGRADED", message: "Database not ready." });
         }
     });
+
+    // FIXED: VAPID key endpoint (properly placed with other API routes)
+    console.log("🔑 Registering VAPID key endpoint...");
+    app.get('/api/vapid-key', (req, res) => {
+        console.log('🔑 VAPID key requested');
+        
+        try {
+            if (!process.env.VAPID_PUBLIC_KEY) {
+                logger.warn('VAPID public key not configured');
+                return res.status(503).json({
+                    error: 'Push notifications not configured',
+                    configured: false
+                });
+            }
+
+            logger.info('VAPID key endpoint accessed successfully');
+            res.json({
+                publicKey: process.env.VAPID_PUBLIC_KEY,
+                configured: true
+            });
+        } catch (error) {
+            logger.error('Error in VAPID key endpoint:', { error: error.message });
+            res.status(500).json({
+                error: 'Internal server error',
+                configured: false
+            });
+        }
+    });
+
+    // Push subscription endpoint
+    app.post('/api/push-subscription', authMiddleware, catchAsync(async (req, res, next) => {
+        const subscription = req.body;
+        const userId = req.user.id;
+
+        logger.info('New push subscription received', { userId });
+
+        // Store subscription in your database here
+        // This is where you'd save the subscription to your existing user model
+
+        res.json({ success: true, message: 'Subscription saved successfully' });
+    }));
+
+    // Paddle configuration
+    console.log("💳 Setting up Paddle configuration...");
+    const PADDLE_ENV =
+        process.env.NODE_ENV === "production" ? "production" : "sandbox";
+    const PADDLE_BASE_URL =
+        PADDLE_ENV === "production"
+            ? "https://api.paddle.com"
+            : "https://sandbox-api.paddle.com";
+
+    app.post(
+        "/api/paddle/create-transaction",
+        authMiddleware,
+        catchAsync(async (req, res, next) => {
+            console.log("▶️ Paddle env:", PADDLE_ENV);
+            console.log("▶️ Received body:", req.body);
+
+            const {
+                priceId,
+                quantity,
+                customerEmail,
+                customData,
+                successUrl,
+                cancelUrl,
+            } = req.body;
+
+            const userId = req.user.id;
+            const requestId = req.requestId;
+
+            logger.info("Creating Paddle transaction", { userId, priceId, requestId });
+
+            if (!priceId || !quantity) {
+                logger.warn("Invalid request: Missing priceId or quantity", {
+                    userId,
+                    requestId,
+                    body: req.body,
+                });
+                return next(
+                    new AppError("Missing required fields: priceId and quantity", 400)
+                );
+            }
+
+            try {
+                const response = await axios.post(
+                    `${PADDLE_BASE_URL}/transactions`,
+                    {
+                        items: [{ price_id: priceId, quantity }],
+                        customer_email: customerEmail || req.user.email,
+                        custom_data: customData || { userId },
+                        success_url: successUrl || `${process.env.FRONTEND_URL}/app`,
+                        cancel_url: cancelUrl || `${process.env.FRONTEND_URL}/#pricing`,
+                        collection_mode: "automatic",
+                    },
+                    {
+                        headers: {
+                            Authorization: `Bearer ${PADDLE_API_KEY}`,
+                            "Content-Type": "application/json",
+                        },
+                    }
+                );
+                logger.info("Paddle transaction created", {
+                    userId,
+                    transactionId: response.data.data.id,
+                    requestId,
+                });
+                return res.status(200).json({ transactionId: response.data.data.id });
+            } catch (err) {
+                logger.error("Paddle transaction creation failed", {
+                    userId,
+                    requestId,
+                    status: err.response?.status,
+                    paddleError: err.response?.data,
+                });
+                return next(
+                    new AppError(
+                        err.response?.data?.message || "Failed to create transaction",
+                        err.response?.status || 500
+                    )
+                );
+            }
+        })
+    );
 
     console.log("🔐 Registering auth routes...");
     app.use("/api/auth", authRoutes);
@@ -784,6 +797,8 @@ console.log("🏠 Setting up SPA fallback...");
 app.get('*', (req, res) => {
     // Only serve index.html for non-API routes
     if (req.path.startsWith('/api/')) {
+        console.log('❌ API endpoint not found:', req.path);
+        logger.warn('API endpoint not found', { path: req.path, method: req.method });
         return res.status(404).json({ error: 'API endpoint not found' });
     }
     res.sendFile(path.join(publicPath, 'index.html'));
