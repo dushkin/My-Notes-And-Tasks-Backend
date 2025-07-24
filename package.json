@@ -1,7 +1,6 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "7.6.0",
-  "commitMessage": "Fixed reminder issues",
+  "version": "7.7.0",
   "description": "",
   "main": "server.js",
   "type": "module",
