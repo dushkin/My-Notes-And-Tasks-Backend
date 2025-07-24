@@ -43,47 +43,47 @@ class PushNotificationService {
         try {
             // Handle both object and string payloads
             const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
-            
-            const result = await webpush.sendNotification(subscription, payloadString, { 
+
+            const result = await webpush.sendNotification(subscription, payloadString, {
                 TTL: 86400,  // 24 hours
                 urgency: 'normal',
                 headers: {}
             });
-            
-            logger.info('Push notification sent successfully', { 
+
+            logger.info('Push notification sent successfully', {
                 endpoint: subscription.endpoint?.substring(0, 50) + '...' || 'unknown'
             });
             return { success: true, result };
         } catch (error) {
             const endpoint = subscription.endpoint?.substring(0, 50) + '...' || 'unknown';
-            
-            logger.error('Failed to send push notification', { 
-                statusCode: error.statusCode, 
+
+            logger.error('Failed to send push notification', {
+                statusCode: error.statusCode,
                 endpoint,
                 error: error.message
             });
-            
+
             // Handle specific error cases
             if (error.statusCode === 410 || error.statusCode === 404) {
-                return { 
-                    success: false, 
-                    error: 'invalid_subscription', 
+                return {
+                    success: false,
+                    error: 'invalid_subscription',
                     shouldRemove: true,
                     statusCode: error.statusCode
                 };
             }
-            
+
             if (error.statusCode === 429) {
-                return { 
-                    success: false, 
-                    error: 'rate_limited', 
+                return {
+                    success: false,
+                    error: 'rate_limited',
                     shouldRetry: true,
                     statusCode: error.statusCode
                 };
             }
-            
-            return { 
-                success: false, 
+
+            return {
+                success: false,
                 error: error.message,
                 statusCode: error.statusCode
             };
@@ -107,14 +107,14 @@ class PushNotificationService {
         for (const subscription of subscriptions) {
             try {
                 const result = await this.sendNotification(subscription, payload);
-                
-                results.push({ 
+
+                results.push({
                     endpoint: subscription.endpoint?.substring(0, 50) + '...' || 'unknown',
                     success: result.success,
                     error: result.error,
                     statusCode: result.statusCode
                 });
-                
+
                 if (result.shouldRemove) {
                     invalidSubscriptions.push(subscription);
                 }
@@ -123,7 +123,7 @@ class PushNotificationService {
                     error: error.message,
                     endpoint: subscription.endpoint?.substring(0, 50) + '...' || 'unknown'
                 });
-                
+
                 results.push({
                     endpoint: subscription.endpoint?.substring(0, 50) + '...' || 'unknown',
                     success: false,
@@ -143,31 +143,45 @@ class PushNotificationService {
         return { results, invalidSubscriptions };
     }
 
-    createReminderPayload(itemTitle, itemId, reminderTime) {
+    // Update the createReminderPayload method in pushNotificationService.js
+    // Replace the existing method with this updated version:
+
+    createReminderPayload(itemTitle, itemId, reminderTime, options = {}) {
+        // Check if Done button should be displayed
+        const shouldDisplayDoneButton = options.reminderDisplayDoneButton ?? true; // Default to true
+
+        // Configure actions based on setting
+        const actions = shouldDisplayDoneButton ? [
+            { action: "done", title: "✅ Done", icon: "/favicon-32x32.png" },
+            { action: "snooze", title: "⏰ Snooze", icon: "/favicon-32x32.png" },
+            { action: "open", title: "📱 Open App", icon: "/favicon-32x32.png" }
+        ] : [
+            { action: "snooze", title: "⏰ Snooze", icon: "/favicon-32x32.png" },
+            { action: "open", title: "📱 Open App", icon: "/favicon-32x32.png" }
+        ];
+
         return {
             title: '⏰ Reminder',
             body: itemTitle || 'You have a reminder',
             icon: '/favicon-192x192.png',
             badge: '/favicon-48x48.png',
             tag: `reminder-${itemId || Date.now()}`,
-            requireInteraction: true,
+            requireInteraction: shouldDisplayDoneButton, // Only require interaction if Done button is enabled
             silent: false,
             vibrate: [200, 100, 200],
             data: {
                 type: 'reminder',
                 itemId: itemId || null,
                 reminderTime: reminderTime || Date.now(),
-                url: itemId ? `/app?focus=${itemId}` : '/app'
+                url: itemId ? `/app?focus=${itemId}` : '/app',
+                shouldDisplayDoneButton: shouldDisplayDoneButton, // Pass setting to client
+                autoTimeoutMs: shouldDisplayDoneButton ? null : 8000 // Auto-dismiss after 5s if no Done button
             },
-            actions: [
-                { action: "done", title: "✅ Done", icon: "/favicon-32x32.png" },
-                { action: "snooze", title: "⏰ Snooze", icon: "/favicon-32x32.png" },
-                { action: "open", title: "📱 Open App", icon: "/favicon-32x32.png" }
-            ],
+            actions: actions,
             timestamp: Date.now()
         };
     }
-    
+
     createNotificationPayload(title, body, options = {}) {
         const defaultOptions = {
             icon: '/favicon-192x192.png',
@@ -205,4 +219,3 @@ class PushNotificationService {
             icon: '/favicon-128x128.png',
             badge: '/favicon-48x48.png',
             tag: 'device-sync',
-            

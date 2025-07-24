@@ -67,7 +67,7 @@ if (environment === 'production') {
   console.log('\n⚠️  WARNING: You are about to run migration on PRODUCTION database!');
   console.log('Press Ctrl+C to cancel, or wait 5 seconds to continue...');
   
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  await new Promise(resolve => setTimeout(resolve, 8000));
   console.log('Proceeding with production migration...\n');
 }
 
