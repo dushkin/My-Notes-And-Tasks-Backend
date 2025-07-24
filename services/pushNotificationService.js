@@ -147,10 +147,8 @@ class PushNotificationService {
     // Replace the existing method with this updated version:
 
     createReminderPayload(itemTitle, itemId, reminderTime, options = {}) {
-        // Check if Done button should be displayed
-        const shouldDisplayDoneButton = options.reminderDisplayDoneButton ?? true; // Default to true
+        const shouldDisplayDoneButton = options.reminderDisplayDoneButton ?? true;
 
-        // Configure actions based on setting
         const actions = shouldDisplayDoneButton ? [
             { action: "done", title: "✅ Done", icon: "/favicon-32x32.png" },
             { action: "snooze", title: "⏰ Snooze", icon: "/favicon-32x32.png" },
@@ -161,24 +159,50 @@ class PushNotificationService {
         ];
 
         return {
-            title: '⏰ Reminder',
-            body: itemTitle || 'You have a reminder',
+            title: '🔔 URGENT: Task Reminder', // More attention-grabbing title
+            body: `⚠️ ${itemTitle || 'Important task reminder!'}`, // Add warning emoji
             icon: '/favicon-192x192.png',
             badge: '/favicon-48x48.png',
-            tag: `reminder-${itemId || Date.now()}`,
-            requireInteraction: shouldDisplayDoneButton, // Only require interaction if Done button is enabled
+            image: '/favicon-192x192.png', // Large image
+            tag: `urgent-reminder-${itemId || Date.now()}`,
+
+            // 🚨 MAXIMUM VISIBILITY SETTINGS
+            requireInteraction: true, // ALWAYS require interaction
+            persistent: true,
+            renotify: true,
             silent: false,
-            vibrate: [200, 100, 200],
+            vibrate: [800, 200, 800, 200, 800], // Strong vibration
+            urgency: 'high',
+
             data: {
-                type: 'reminder',
+                type: 'urgent-reminder',
                 itemId: itemId || null,
                 reminderTime: reminderTime || Date.now(),
                 url: itemId ? `/app?focus=${itemId}` : '/app',
-                shouldDisplayDoneButton: shouldDisplayDoneButton, // Pass setting to client
-                autoTimeoutMs: shouldDisplayDoneButton ? null : 8000 // Auto-dismiss after 5s if no Done button
+                shouldDisplayDoneButton: shouldDisplayDoneButton,
+                priority: 'urgent'
             },
             actions: actions,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+
+            // 🔴 ENHANCED MOBILE SETTINGS
+            android: {
+                channelId: 'urgent-reminders',
+                priority: 2, // PRIORITY_HIGH
+                visibility: 1, // Show on lock screen
+                category: 'alarm',
+                color: '#FF0000', // Bright red
+                fullScreenIntent: true, // Show over other apps
+                sound: 'default',
+                vibrationPattern: [800, 200, 800, 200, 800],
+                lights: { argb: 0xFFFF0000, onMs: 1000, offMs: 500 }
+            },
+
+            ios: {
+                sound: 'default',
+                badge: 1,
+                'interruption-level': 'critical' // iOS critical alerts
+            }
         };
     }
 
