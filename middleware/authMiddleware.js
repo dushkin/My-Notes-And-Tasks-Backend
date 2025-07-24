@@ -1,11 +1,29 @@
-// middleware/authMiddleware.js
-import { verifyAccessToken } from '../utils/jwt.js'; // Assuming ESM
-import { AppError } from './errorHandlerMiddleware.js'; // Assuming ESM
-import User from '../models/User.js'; // Assuming ESM
-import logger from '../config/logger.js'; // Import logger
+import { verifyAccessToken } from '../utils/jwt.js';
+import { AppError } from './errorHandlerMiddleware.js';
+import User from '../models/User.js';
+import logger from '../config/logger.js';
 
 const authMiddleware = async (req, res, next) => {
+    
+    console.log('🔍 AUTH MIDDLEWARE CALLED FOR:', req.method, req.path, req.originalUrl);
+    
+    // Allow unauthenticated access to specific endpoints
+    const publicPaths = [
+        '/api/auth/beta-status',
+        '/auth/beta-status',  // Also check without /api prefix
+        '/api/push/vapid-public-key',
+        '/push/vapid-public-key'
+    ];
+    
+    const isPublicPath = publicPaths.some(path => req.path === path || req.originalUrl === path);
+    
+    if (isPublicPath) {
+        logger.debug('authMiddleware: Allowing public access to:', { path: req.path, originalUrl: req.originalUrl });
+        return next();
+    }
+
     logger.debug('authMiddleware: Processing request', { path: req.path });
+    
     try {
         const authHeader = req.header('Authorization');
         if (!authHeader) {
@@ -30,10 +48,10 @@ const authMiddleware = async (req, res, next) => {
             return next(new AppError('Not authorized, user not found', 401));
         }
 
-        // NEW: Enhanced user object attachment for PWA sync
-        req.user = user; // User object (with toJSON applied by model) is attached
+        // Enhanced user object attachment for PWA sync
+        req.user = user;
         
-        // NEW: Extract device ID from headers for sync tracking
+        // Extract device ID from headers for sync tracking
         const deviceId = req.header('X-Device-ID') || req.header('Device-ID');
         if (deviceId) {
             req.deviceId = deviceId;
@@ -44,17 +62,14 @@ const authMiddleware = async (req, res, next) => {
             });
         }
 
-        // NEW: Update user activity for PWA sync (non-blocking)
+        // Update user activity for PWA sync (non-blocking)
         setImmediate(async () => {
             try {
                 const shouldUpdateActivity = 
-                    // Update activity for sync-related endpoints
                     req.path.startsWith('/api/sync/') ||
                     req.path.startsWith('/api/push/') ||
-                    // Or if device ID is provided
                     deviceId ||
-                    // Or periodically for general usage
-                    Math.random() < 0.1; // 10% of requests to avoid DB overhead
+                    Math.random() < 0.1; // 10% of requests
 
                 if (shouldUpdateActivity) {
                     await user.recordLogin(deviceId);
@@ -65,7 +80,6 @@ const authMiddleware = async (req, res, next) => {
                     });
                 }
             } catch (error) {
-                // Don't fail the request if activity update fails
                 logger.debug('authMiddleware: Failed to update user activity', { 
                     userId: user.id, 
                     error: error.message 
@@ -97,4 +111,4 @@ const authMiddleware = async (req, res, next) => {
     }
 };
 
-export default authMiddleware; // Assuming ESM
+export default authMiddleware;

@@ -495,21 +495,6 @@ app.use((req, res, next) => {
     next();
 });
 
-// CRITICAL FIX: API-specific middleware (comes BEFORE static files)
-console.log("🔑 Setting up API middleware...");
-app.use('/api', (req, res, next) => {
-    console.log('🔍 API request:', req.method, req.path, req.url);
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
-
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-
-    next();
-});
-
 // MOVED UP: Utility file routes (BEFORE static files)
 console.log("🛠️ Setting up utility file routes...");
 app.get('/src/utils/SyncManager.js', (req, res) => {
@@ -523,6 +508,7 @@ app.get('/src/utils/clientInit.js', (req, res) => {
 });
 
 // All API routes registration (BEFORE static files)
+
 console.log("🛣️ Registering API routes...");
 try {
     logger.debug("Registering routes...");
@@ -550,7 +536,6 @@ try {
                             ? "running"
                             : "disabled",
                 },
-                // NEW: PWA sync status
                 pwaSyncStatus: {
                     enabled: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
                     deviceSyncService: deviceSyncService ? "available" : "not available"
@@ -566,19 +551,6 @@ try {
                 .json({ status: "DEGRADED", message: "Database not ready." });
         }
     });
-
-    // Push subscription endpoint
-    app.post('/api/push-subscription', authMiddleware, catchAsync(async (req, res, next) => {
-        const subscription = req.body;
-        const userId = req.user.id;
-
-        logger.info('New push subscription received', { userId });
-
-        // Store subscription in your database here
-        // This is where you'd save the subscription to your existing user model
-
-        res.json({ success: true, message: 'Subscription saved successfully' });
-    }));
 
     // Paddle configuration
     console.log("💳 Setting up Paddle configuration...");
@@ -662,40 +634,47 @@ try {
         })
     );
 
+    // IMPORTANT: Register routes WITHOUT blanket authMiddleware application
+    // Auth routes (these have selective auth middleware applied within the router)
     console.log("🔐 Registering auth routes...");
     app.use("/api/auth", authRoutes);
 
-    console.log("📦 Registering items routes...");
-    app.use("/api/items", itemsRoutes);
-    console.log("🖼️ Registering image routes...");
-    app.use("/api/images", imageRoutes);
-
-    console.log("👤 Registering account routes...");
-    app.use("/api/account", accountRoutes);
-
+    // Meta routes (public routes, NO auth middleware)
     console.log("📋 Registering meta routes...");
     app.use("/api/meta", metaRoutes);
-    console.log("💳 Registering paddle webhook routes...");
-    app.use("/api/paddle", paddleWebhook);
 
+    // Push notification routes (selective auth middleware within router)
     console.log("🔔 Registering push notification routes...");
     app.use("/api/push", pushNotificationRoutes);
 
-    // NEW: Register sync routes
+    // Protected routes (apply auth middleware to all routes in these routers)
+    console.log("📦 Registering items routes...");
+    app.use("/api/items", authMiddleware, itemsRoutes);
+
+    console.log("🖼️ Registering image routes...");
+    app.use("/api/images", authMiddleware, imageRoutes);
+
+    console.log("👤 Registering account routes...");
+    app.use("/api/account", authMiddleware, accountRoutes);
+
+    console.log("💳 Registering paddle webhook routes...");
+    app.use("/api/paddle", paddleWebhook);
+
+    // Sync routes (apply auth middleware)
     if (syncRoutes) {
         console.log("🔄 Registering sync routes...");
-        app.use("/api/sync", syncRoutes);
+        app.use("/api/sync", authMiddleware, syncRoutes);
         logger.debug("syncRoutes registered.");
     } else {
         logger.info("Sync routes not available, skipping registration");
     }
 
     console.log("🔔 Registering reminders routes...");
-    app.use("/api/reminders", reminderRoutes);
+    app.use("/api/reminders", authMiddleware, reminderRoutes);
 
     if (process.env.ENABLE_ADMIN_ROUTES !== "false") {
         console.log("🔧 Registering admin routes...");
-        app.use("/api/admin", adminRoutes);
+        app.use("/api/admin", authMiddleware, adminRoutes);
         logger.debug("adminRoutes registered.");
     } else {
         logger.info(
@@ -766,12 +745,17 @@ app.use(express.static(publicPath, {
 
 // SPA FALLBACK: This must be LAST (after all API routes and static files)
 console.log("🏠 Setting up SPA fallback...");
+const isDev = process.env.NODE_ENV !== 'production';
 app.get('*', (req, res) => {
     // Only serve index.html for non-API routes
     if (req.path.startsWith('/api/')) {
         console.log('❌ API endpoint not found:', req.path);
         logger.warn('API endpoint not found', { path: req.path, method: req.method });
         return res.status(404).json({ error: 'API endpoint not found' });
+    }
+
+    if (isDev) {
+        return res.status(404).json({ error: 'Frontend not served in dev mode' });
     }
     res.sendFile(path.join(publicPath, 'index.html'));
 });

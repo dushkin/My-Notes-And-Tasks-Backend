@@ -25,20 +25,31 @@ try {
     });
 }
 
-// Get VAPID public key (no auth required)
+// PUBLIC ENDPOINT: Get VAPID public key (no auth required)
 router.get("/vapid-public-key", (req, res) => {
+    logger.debug('VAPID public key requested', { 
+        ip: req.ip, 
+        userAgent: req.get('User-Agent')
+    });
+    
     const publicKey = process.env.VAPID_PUBLIC_KEY;
     if (!publicKey) {
-        return res.status(503).json({ 
-            success: false, 
-            message: 'Push notifications not configured on server' 
+        logger.warn('VAPID public key requested but not configured');
+        return res.status(503).json({
+            success: false,
+            message: 'Push notifications not configured on server'
         });
     }
+    
+    logger.debug('VAPID public key served successfully');
     res.status(200).json({ success: true, publicKey });
 });
 
+// PROTECTED ENDPOINTS: Apply auth middleware to all routes below this point
+router.use(authMiddleware);
+
 // Save subscription (enhanced with device tracking)
-router.post("/subscribe", authMiddleware, async (req, res) => {
+router.post("/subscribe", async (req, res) => {
     try {
         const subscription = req.body;
         const deviceId = req.header('X-Device-ID') || req.deviceId;
@@ -101,7 +112,7 @@ router.post("/subscribe", authMiddleware, async (req, res) => {
 });
 
 // Send test notification (enhanced)
-router.post("/test", authMiddleware, async (req, res) => {
+router.post("/test", async (req, res) => {
     try {
         // Get subscriptions from both models
         const oldSubscriptions = await PushSubscription.find({ userId: req.user.id });
@@ -212,7 +223,7 @@ router.post("/test", authMiddleware, async (req, res) => {
 });
 
 // Get user's subscriptions
-router.get("/subscriptions", authMiddleware, async (req, res) => {
+router.get("/subscriptions", async (req, res) => {
     try {
         const subscriptions = await PushSubscription.find({ userId: req.user.id })
             .select('subscription.endpoint createdAt')
