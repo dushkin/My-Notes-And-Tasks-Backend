@@ -93,8 +93,13 @@ function getCharacterName(char) {
 export function validateItemNameMiddleware(req, res, next) {
   const { label } = req.body;
   
+  // Only validate if label is present in the request
+  if (!label && !req.body.hasOwnProperty('label')) {
+    return next(); // No label field to validate
+  }
+  
   if (!label) {
-    return next(); // Let other validation handle required field
+    return res.status(400).json({ error: 'Label cannot be empty' });
   }
 
   const validation = validateItemName(label);

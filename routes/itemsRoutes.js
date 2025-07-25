@@ -99,7 +99,7 @@ router.patch(
       .trim()
       .isLength({ max: 255 })
       .withMessage('Label cannot exceed 255 characters'),
-    body('content').optional().isString(),
+    body('content').optional().isString().withMessage('Content must be a string'),
     body('completed').optional().isBoolean(),
     body('direction')
       .optional()
@@ -107,7 +107,7 @@ router.patch(
       .withMessage('Direction must be "ltr" or "rtl"'),
     validate,
   ],
-  validateItemNameMiddleware, // Add validation middleware here
+  validateItemNameMiddleware, // Only validates label if present
   updateItem
 );
 // Delete an item
