@@ -448,7 +448,16 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 console.log("🔧 Setting up security middleware...");
 app.use(mongoSanitize());
 if (typeof xss === "function") {
-    app.use(xss());
+    // Apply XSS cleaning selectively - exclude items routes that handle rich text content
+    app.use((req, res, next) => {
+        // Skip XSS cleaning for items routes that handle rich text content
+        if (req.originalUrl.startsWith('/api/items') && req.method === 'PATCH') {
+            console.log('⏭️ Skipping XSS cleaning for rich text content route:', req.originalUrl);
+            next();
+        } else {
+            xss()(req, res, next);
+        }
+    });
 } else {
     logger.error(
         "xss-clean module was not imported as a function. XSS middleware not applied."
