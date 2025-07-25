@@ -161,7 +161,13 @@ export const updateItem = catchAsync(async (req, res, next) => {
     const userId = req.user.id;
     const { itemId } = req.params;
     const updates = req.body;
-    logger.info('Attempting to update item', { userId, itemId, updates: Object.keys(updates) });
+    logger.info('Attempting to update item', { 
+        userId, 
+        itemId, 
+        updates: Object.keys(updates),
+        contentType: updates.content ? typeof updates.content : 'undefined',
+        contentPreview: updates.content ? updates.content.substring(0, 100) : 'undefined'
+    });
 
     const user = await User.findById(userId);
     if (!user) {

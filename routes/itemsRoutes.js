@@ -99,7 +99,12 @@ router.patch(
       .trim()
       .isLength({ max: 255 })
       .withMessage('Label cannot exceed 255 characters'),
-    body('content').optional().isString().withMessage('Content must be a string'),
+    body('content').optional().custom((value) => {
+      if (value === null || value === undefined) return true;
+      if (typeof value === 'string') return true;
+      if (typeof value === 'number') return true; // Allow numbers to be converted
+      throw new Error(`Content must be a string, received ${typeof value}: ${JSON.stringify(value)}`);
+    }),
     body('completed').optional().isBoolean(),
     body('direction')
       .optional()
