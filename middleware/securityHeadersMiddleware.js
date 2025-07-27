@@ -16,7 +16,8 @@ const securityHeaders = helmet({
         "https://cdn.jsdelivr.net",
         "http://cdn.jsdelivr.net",
         "https://www.googletagmanager.com",
-        "https://unpkg.com"
+        "https://unpkg.com",
+        "https://connect.facebook.net"
       ],
       imgSrc: ["'self'", "data:", "https:", "http://localhost:5001"],
       fontSrc: ["'self'", "data:"],
