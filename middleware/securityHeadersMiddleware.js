@@ -38,7 +38,8 @@ const securityHeaders = helmet({
         "https://play.google.com",
         "https://www.google-analytics.com",
         "https://analytics.google.com",
-        "https://www.googletagmanager.com"
+        "https://www.googletagmanager.com",
+        "https://connect.facebook.net"
       ],
       mediaSrc: ["'self'"],
       frameSrc: ["'none'"],
