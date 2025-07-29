@@ -43,9 +43,9 @@ JSON_PAYLOAD=$(jq -n --arg diff "$STAGED_DIFF" \
     ]
   }')
 
-# Call the Gemini API using the 'gemini-1.5-flash-latest' model.
+# Call the Gemini API using the 'gemini-1.5-flash' model.
 API_RESPONSE=$(curl -s -X POST \
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GOOGLE_API_KEY}" \
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "$JSON_PAYLOAD")
 
@@ -54,9 +54,11 @@ COMMIT_MESSAGE=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].t
 
 # Check if the commit message was generated successfully.
 if [ "$COMMIT_MESSAGE" == "null" ] || [ -z "$COMMIT_MESSAGE" ]; then
-    echo "Error: Failed to generate commit message from AI."
+    echo "Warning: Failed to generate AI commit message. Using fallback."
     echo "API Response: $API_RESPONSE"
-    exit 1
+    # Generate a simple commit message based on file changes
+    CHANGED_FILES=$(git diff --cached --name-only | head -3 | tr '\n' ', ' | sed 's/,$//')
+    COMMIT_MESSAGE="chore: update $CHANGED_FILES"
 fi
 
 echo -e "📄 Generated Commit Message:\n---\n$COMMIT_MESSAGE\n---"
