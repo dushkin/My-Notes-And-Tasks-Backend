@@ -1,6 +1,6 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "8.2.1",
+  "version": "8.2.7",
   "description": "",
   "main": "server.js",
   "type": "module",
