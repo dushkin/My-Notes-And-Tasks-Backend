@@ -18,8 +18,9 @@ VERSION=$(jq -r '.version' package.json)
 # Add all modified files to staging so the diff is complete.
 git add .
 
-# Get the staged diff.
-STAGED_DIFF=$(git diff --staged)
+# Get the staged diff with size limit to avoid "Argument list too long"
+STAGED_DIFF=$(git diff --staged --stat)
+STAGED_DIFF_SAMPLE=$(git diff --staged | head -n 200)
 
 # If there's no diff, exit as there is nothing to commit.
 if [ -z "$STAGED_DIFF" ]; then
@@ -29,19 +30,26 @@ fi
 
 echo "🤖 Asking the AI to generate a commit message..."
 
+# Create a summary of changes for the AI
+CHANGED_FILES=$(git diff --cached --name-only | tr '\n' ', ' | sed 's/,$//')
+CHANGES_SUMMARY="Files changed: $CHANGED_FILES\n\nDiff sample (first 200 lines):\n$STAGED_DIFF_SAMPLE\n\nDiff stats:\n$STAGED_DIFF"
+
 # Create the JSON payload for the Gemini API.
-JSON_PAYLOAD=$(jq -n --arg diff "$STAGED_DIFF" \
+JSON_PAYLOAD=$(jq -n --arg changes "$CHANGES_SUMMARY" \
   '{
     "contents": [
       {
         "parts": [
           {
-            "text": "Based on the following git diff, suggest a concise commit message in the conventional commit format (e.g., feat: summary). The message should have a subject line and an optional, brief body if needed.\n\nDiff:\n---\n\($diff)"
+            "text": "Based on the following git changes summary, suggest a concise commit message in the conventional commit format (e.g., feat: summary). The message should have a subject line and an optional, brief body if needed.\n\n\($changes)"
           }
         ]
       }
     ]
   }')
+
+# Debug: Check JSON payload size
+echo "Debug: JSON payload size: $(echo "$JSON_PAYLOAD" | wc -c) characters"
 
 # Call the Gemini API using the 'gemini-1.5-flash' model.
 API_RESPONSE=$(curl -s -X POST \
@@ -49,11 +57,14 @@ API_RESPONSE=$(curl -s -X POST \
   -H "Content-Type: application/json" \
   -d "$JSON_PAYLOAD")
 
+# Debug: Show API response
+echo "Debug: API Response: $API_RESPONSE"
+
 # Parse the response to get the commit message text and clean it up.
-COMMIT_MESSAGE=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text' | sed 's/`//g')
+COMMIT_MESSAGE=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text' 2>/dev/null | sed 's/`//g')
 
 # Check if the commit message was generated successfully.
-if [ "$COMMIT_MESSAGE" == "null" ] || [ -z "$COMMIT_MESSAGE" ]; then
+if [ "$COMMIT_MESSAGE" == "null" ] || [ -z "$COMMIT_MESSAGE" ] || echo "$API_RESPONSE" | grep -q "error"; then
     echo "Warning: Failed to generate AI commit message. Using fallback."
     echo "API Response: $API_RESPONSE"
     # Generate a simple commit message based on file changes
