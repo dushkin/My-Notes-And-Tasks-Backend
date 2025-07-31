@@ -769,9 +769,15 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(publicPath, 'index.html'));
 });
 
+console.log("🔧 Setting up fcm routes...");
+// FCM routes temporarily disabled due to missing proper route implementation
+// const fcmRoutes = await import('./routes/fcm.js');
+// app.use('/api/fcm', fcmRoutes.default);
+
 // Error handlers (must be last)
 console.log("🔧 Setting up error handlers...");
 app.use(globalErrorHandler);
+
 
 const checkModule = (mod, name) => {
     if (!mod) {

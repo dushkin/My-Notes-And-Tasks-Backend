@@ -479,3 +479,12 @@ class ScheduledTasksService {
 // Create and export singleton instance
 const scheduledTasksService = new ScheduledTasksService();
 export default scheduledTasksService;
+
+// Hook into scheduled reminders - example logic
+async function processDueReminders(items) {
+  for (const item of items) {
+    if (item.reminder && !item.reminder.disabled && new Date(item.reminder.timestamp).getTime() <= Date.now()) {
+      await sendReminderToDevice(item);
+    }
+  }
+}

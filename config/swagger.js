@@ -1,5 +1,5 @@
 // config/swagger.js
-const swaggerJsdoc = require('swagger-jsdoc');
+import swaggerJsdoc from 'swagger-jsdoc';
 
 // Main Swagger definition object
 const swaggerDefinition = {
@@ -220,4 +220,4 @@ const options = {
 const swaggerSpec = swaggerJsdoc(options);
 
 // Export the generated specification
-module.exports = swaggerSpec;
+export default swaggerSpec;

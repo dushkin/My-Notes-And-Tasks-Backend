@@ -132,11 +132,19 @@ self.addEventListener('push', function (event) {
 self.addEventListener('notificationclick', function (event) {
   const action = event.action;
   const notification = event.notification;
+  const data = notification.data || {};
 
-  console.log('🖱️ Notification clicked:', { action, tag: notification.tag });
+  console.log('🖱️ Notification clicked:', { action, tag: notification.tag, data });
 
   event.notification.close();
 
+  // Handle reminder-specific actions
+  if (data.type === 'reminder') {
+    event.waitUntil(handleReminderAction(action, data));
+    return;
+  }
+
+  // Handle other notifications
   if (action === 'dismiss') {
     return; // Just close the notification
   }
@@ -157,6 +165,94 @@ self.addEventListener('notificationclick', function (event) {
   );
 });
 
+// Handle reminder notification actions
+async function handleReminderAction(action, data) {
+  const { itemId, itemTitle, reminderData } = data;
+  
+  console.log(`🔔 SW: Handling reminder action '${action}' for ${itemTitle}`);
+  
+  // Get app clients
+  const clients = await self.clients.matchAll({ type: 'window' });
+  
+  switch (action) {
+    case 'done':
+      // Notify app to mark task as done
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'REMINDER_DONE',
+          itemId,
+          reminderId: `${itemId}-${Date.now()}`
+        });
+      });
+      break;
+      
+    case 'snooze':
+      // Snooze for 5 minutes
+      const snoozeTime = Date.now() + 5 * 60 * 1000;
+      scheduleReminder({
+        itemId,
+        timestamp: snoozeTime,
+        itemTitle,
+        reminderData
+      });
+      
+      // Notify app about snooze
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'REMINDER_SNOOZED',
+          itemId,
+          snoozeUntil: snoozeTime
+        });
+      });
+      
+      // Show snooze confirmation
+      await self.registration.showNotification('⏰ Reminder Snoozed', {
+        body: `${itemTitle} will remind you again in 5 minutes`,
+        icon: '/favicon-192x192.png',
+        tag: `snooze-${itemId}`,
+        requireInteraction: false,
+        silent: true
+      });
+      break;
+      
+    case 'dismiss':
+      // Just dismiss - notify app to clear reminder
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'REMINDER_DISMISSED',
+          itemId
+        });
+      });
+      break;
+      
+    case 'open':
+    default:
+      // Open or focus the app
+      let appFocused = false;
+      for (const client of clients) {
+        if (client.url.includes(self.location.origin)) {
+          await client.focus();
+          appFocused = true;
+          break;
+        }
+      }
+      
+      if (!appFocused) {
+        await self.clients.openWindow('/');
+      }
+      
+      // Notify app to focus the specific item
+      const allClients = await self.clients.matchAll({ type: 'window' });
+      allClients.forEach(client => {
+        client.postMessage({
+          type: 'FOCUS_ITEM',
+          itemId
+        });
+      });
+      break;
+  }
+}
+
 // Background sync (for future use)
 self.addEventListener('sync', (event) => {
   console.log('🔄 Background sync triggered:', event.tag);
@@ -169,13 +265,104 @@ self.addEventListener('sync', (event) => {
   }
 });
 
+// Reminder scheduling storage
+let scheduledReminders = new Map();
+
 // Message handling from main thread
 self.addEventListener('message', (event) => {
   console.log('💬 Message received:', event.data);
   
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  const { type, data } = event.data || {};
+  
+  if (type === 'SKIP_WAITING') {
     self.skipWaiting();
+  } else if (type === 'SCHEDULE_REMINDER') {
+    scheduleReminder(data);
+  } else if (type === 'CANCEL_REMINDER') {
+    cancelReminder(data.itemId);
   }
 });
+
+// Schedule a reminder in the service worker
+function scheduleReminder({ itemId, timestamp, itemTitle, reminderData }) {
+  // Cancel any existing reminder for this item
+  cancelReminder(itemId);
+  
+  const delay = timestamp - Date.now();
+  console.log(`📅 SW: Scheduling reminder for ${itemTitle} in ${delay}ms`);
+  
+  if (delay <= 0) {
+    // Show immediately
+    showReminderNotification(itemId, itemTitle, reminderData);
+    return;
+  }
+  
+  // Schedule for later
+  const timeoutId = setTimeout(() => {
+    showReminderNotification(itemId, itemTitle, reminderData);
+    scheduledReminders.delete(itemId);
+  }, delay);
+  
+  scheduledReminders.set(itemId, timeoutId);
+}
+
+// Cancel a scheduled reminder
+function cancelReminder(itemId) {
+  if (scheduledReminders.has(itemId)) {
+    clearTimeout(scheduledReminders.get(itemId));
+    scheduledReminders.delete(itemId);
+    console.log(`❌ SW: Cancelled reminder for ${itemId}`);
+  }
+}
+
+// Show reminder notification
+async function showReminderNotification(itemId, itemTitle, reminderData = {}) {
+  console.log('🔔 SW: Showing reminder notification for:', itemTitle);
+  
+  const title = '⏰ Reminder';
+  const body = `Don't forget: ${itemTitle || 'Untitled'}`;
+  const options = {
+    body,
+    icon: '/favicon-192x192.png',
+    badge: '/favicon-48x48.png',
+    tag: `reminder-${itemId}`,
+    requireInteraction: true,
+    silent: false,
+    vibrate: [800, 200, 800, 200, 800],
+    data: {
+      type: 'reminder',
+      itemId,
+      itemTitle,
+      reminderData
+    },
+    actions: reminderData.reminderDisplayDoneButton ? [
+      { action: 'done', title: '✅ Mark Done' },
+      { action: 'snooze', title: '⏰ Snooze 5min' },
+      { action: 'open', title: '📱 Open App' }
+    ] : [
+      { action: 'snooze', title: '⏰ Snooze 5min' },
+      { action: 'open', title: '📱 Open App' },
+      { action: 'dismiss', title: '❌ Dismiss' }
+    ]
+  };
+  
+  try {
+    await self.registration.showNotification(title, options);
+    console.log('✅ SW: Reminder notification displayed');
+    
+    // Notify main thread that reminder was triggered
+    const clients = await self.clients.matchAll();
+    clients.forEach(client => {
+      client.postMessage({
+        type: 'REMINDER_TRIGGERED',
+        itemId,
+        itemTitle,
+        reminderData
+      });
+    });
+  } catch (error) {
+    console.error('❌ SW: Failed to show reminder notification:', error);
+  }
+}
 
 console.log('🚀 Service Worker script loaded successfully');

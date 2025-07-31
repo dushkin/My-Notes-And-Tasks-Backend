@@ -89,12 +89,46 @@ bower_components
 consolidated_output.txt
 
 # Backend-specific ignores
-# Ignore all uploaded image files
+# Ignore all uploaded image files - these are user-generated content
 public/uploads/images/*
+# But keep the directory structure
+!public/uploads/images/.gitkeep
 
+# Test results and reports
+test-results/
+coverage/
+*.coverage
 
-# Custom scripts
+# Google Cloud Service Account keys (sensitive!)
+*.json
+!package*.json
+!*config*.json
+# But specifically exclude service account keys
+*-service-account*.json
+*-firebase-*.json
+notask-app-*.json
+
+# Database files (if using local DB for development)
+*.db
+*.sqlite
+*.sqlite3
+
+# PM2 files (if using PM2 for process management)
+ecosystem.config.js
+.pm2/
+
+# Custom scripts (development only)
 /cnrd.sh
+/build.sh
+/release.sh
+*.ps1
 
-# Archives
+# Archives and compressed files
 *.zip
+*.tar.gz
+*.rar
+
+# Temporary files
+tmp/
+temp/
+.tmp/
