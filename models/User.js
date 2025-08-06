@@ -459,10 +459,13 @@ userSchema.statics.cleanupAllInactiveSubscriptions = function(daysInactive = 30)
     );
 };
 
-// PRESERVED: Encrypt notesTree field (your existing encryption)
+// PRESERVED: Encrypt notesTree field with UTF-8 support
 userSchema.plugin(fieldEncryption, {
     fields: ['notesTree'],
-    secret: process.env.DATA_ENCRYPTION_SECRET
+    secret: process.env.DATA_ENCRYPTION_SECRET,
+    // Enable UTF-8 support for Hebrew and other Unicode characters
+    encryptNull: false,
+    useAuthTag: true
 });
 
 export default mongoose.model('User', userSchema);

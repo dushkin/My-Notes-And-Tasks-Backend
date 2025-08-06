@@ -25,6 +25,6 @@ export const sanitizeContent = (content) => {
     KEEP_CONTENT: true // Keep content even if tags are removed
   });
   
-  // Manually encode any remaining > characters to ensure consistency
-  return sanitized.replace(/>/g, '&gt;');
+  // DOMPurify already handles all necessary sanitization and encoding
+  return sanitized;
 };
