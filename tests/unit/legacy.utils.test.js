@@ -1,7 +1,7 @@
 // tests/utils.test.js
 import mongoose from 'mongoose';
-import { hashPassword, comparePassword } from '../utils/hash.js';
-import { generateAccessToken, verifyAccessToken } from '../utils/jwt.js';
+import { hashPassword, comparePassword } from '../../utils/hash.js';
+import { generateAccessToken, verifyAccessToken } from '../../utils/jwt.js';
 
 describe('Hash Utilities', () => {
   it('should hash and verify a password correctly', async () => {

@@ -94,6 +94,12 @@ public/uploads/images/*
 # But keep the directory structure
 !public/uploads/images/.gitkeep
 
+# Exclude all PNG files by default (build artifacts, node_modules, etc.)
+*.png
+
+# But preserve test fixtures
+!tests/fixtures/*.png
+
 # Test results and reports
 test-results/
 coverage/
@@ -132,3 +138,4 @@ ecosystem.config.js
 tmp/
 temp/
 .tmp/
+tests.md

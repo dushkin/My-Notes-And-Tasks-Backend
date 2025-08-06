@@ -15,23 +15,30 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 let mongod;
 
 beforeAll(async () => {
-  // Ensure MONGODB_URI for tests is overridden or handled by MongoMemoryServer
-  // If your .env file has a MONGODB_URI, MongoMemoryServer will usually provide its own.
-  // If JWT_SECRET or other critical env vars are still missing after dotenv.config,
-  // it means they aren't in your .env file or the path is incorrect.
+  // Set default JWT_SECRET for tests if not provided
   if (!process.env.JWT_SECRET) {
-    console.error('FATAL ERROR in setupTests.js: JWT_SECRET is still not defined after dotenv.config(). Check your .env file and its path.');
-    // Optionally throw an error to stop tests if critical env vars are missing
-    // throw new Error('JWT_SECRET must be defined in .env for tests.');
+    process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing-only';
   }
 
-  mongod = await MongoMemoryServer.create();
-  const uri = mongod.getUri();
-  // Override process.env.MONGODB_URI for the test mongoose connection
-  // This ensures tests use the in-memory server regardless of .env content
-  process.env.TEST_MONGODB_URI = uri; 
-  await mongoose.connect(uri);
-});
+  try {
+    mongod = await MongoMemoryServer.create({
+      instance: {
+        dbName: 'test-db',
+      },
+    });
+    const uri = mongod.getUri();
+    process.env.TEST_MONGODB_URI = uri;
+    
+    // Connect to the in-memory database
+    await mongoose.connect(uri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+  } catch (error) {
+    console.error('Failed to start MongoDB Memory Server:', error);
+    throw error;
+  }
+}, 60000); // 60 second timeout for setup
 
 afterAll(async () => {
   if (mongoose.connection.readyState === 1) {

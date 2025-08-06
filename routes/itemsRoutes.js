@@ -38,6 +38,7 @@ const validate = (req, res, next) => {
 
 // Get full notes tree
 router.get('/', getNotesTree);
+router.get('/tree', getNotesTree);
 // Get a single item
 router.get(
   '/:itemId',
@@ -110,6 +111,10 @@ router.patch(
       .optional()
       .isIn(['ltr', 'rtl'])
       .withMessage('Direction must be "ltr" or "rtl"'),
+    body('type')
+      .optional()
+      .isIn(['note', 'folder', 'task'])
+      .withMessage('Type must be "note", "folder", or "task"'),
     validate,
   ],
   validateItemNameMiddleware, // Only validates label if present
@@ -161,6 +166,21 @@ router.put(
   '/tree',
   [
     body('newTree').isArray().withMessage('newTree must be an array'),
+    body('newTree').custom((items) => {
+      if (!Array.isArray(items)) return false;
+      for (const item of items) {
+        if (typeof item !== 'object' || item === null) {
+          throw new Error('Each tree item must be an object');
+        }
+        if (!item.label || typeof item.label !== 'string' || !item.label.trim()) {
+          throw new Error('Each tree item must have a non-empty label');
+        }
+        if (!['note', 'folder', 'task'].includes(item.type)) {
+          throw new Error('Each tree item must have a valid type');
+        }
+      }
+      return true;
+    }),
     validate,
   ],
   replaceUserTree

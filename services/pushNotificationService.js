@@ -242,4 +242,5 @@ class PushNotificationService {
             body: `Syncing data${deviceName ? ` from ${deviceName}` : ''}...`,
             icon: '/favicon-128x128.png',
             badge: '/favicon-48x48.png',
-            tag: 'device-sync',
+            tag: 'device-sync'
+        };

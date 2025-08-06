@@ -11,6 +11,7 @@ import {
     findParentAndSiblings
 } from '../utils/backendTreeUtils.js';
 import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
+import { sanitizeContent } from '../utils/contentSanitizer.js';
 import logger from '../config/logger.js';
 
 function addMissingTimestampsToTree(nodes, defaultTimestamp) {
@@ -123,7 +124,7 @@ export const createItem = catchAsync(async (req, res, next) => {
         newItem.children = [];
     }
     if (type === 'note' || type === 'task') {
-        newItem.content = content !== undefined ? content : "";
+        newItem.content = content !== undefined ? sanitizeContent(content) : "";
     }
     if (type === 'task') {
         newItem.completed = !!completed;
@@ -305,7 +306,9 @@ export const replaceUserTree = catchAsync(async (req, res, next) => {
     }
 
     const processedNewTree = Array.isArray(newTree) ? newTree.map(item => ensureServerSideIdsAndStructure(item)) : [];
-    logger.debug('Processed new tree structure for replacement', { userId, processedTreeItemsCount: processedNewTree.length });
+    console.log('CONTROLLER DEBUG: Input newTree:', JSON.stringify(newTree, null, 2));
+    console.log('CONTROLLER DEBUG: Processed tree:', JSON.stringify(processedNewTree, null, 2));
+    logger.debug('Processed new tree structure for replacement', { userId, processedTreeItemsCount: processedNewTree.length, firstItem: processedNewTree[0] });
 
     user.notesTree = processedNewTree;
     user.markModified('notesTree');

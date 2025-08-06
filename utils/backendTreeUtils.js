@@ -1,5 +1,6 @@
 // utils/backendTreeUtils.js
 import { v4 as uuidv4_imported } from 'uuid';
+import { sanitizeContent } from './contentSanitizer.js';
 
 export const uuidv4 = uuidv4_imported;
 
@@ -94,8 +95,9 @@ export function updateItemInTree(nodes, itemId, updates) {
                 }
             }
             if (updates.hasOwnProperty('content') && (item.type === 'note' || item.type === 'task')) {
-                if (item.content !== updates.content) {
-                    allowedUpdates.content = updates.content;
+                const sanitizedContent = sanitizeContent(updates.content);
+                if (item.content !== sanitizedContent) {
+                    allowedUpdates.content = sanitizedContent;
                     itemChanged = true;
                 }
             }
