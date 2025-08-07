@@ -876,12 +876,12 @@ if (isMainModule) {
                 });
             });
 
-            serverInstance = httpServer.listen(PORT, () => {
+            serverInstance = httpServer.listen(5001, () => {
                 console.log(
-                    `✅ Server running on port ${PORT} and ready to accept connections.`
+                    `✅ Server running on port 5001 and ready to accept connections.`
                 );
                 logger.info(
-                    `Server running on port ${PORT} and ready to accept connections.`,
+                    `Server running on port 5001 and ready to accept connections.`,
                     {
                         environment: process.env.NODE_ENV,
                         pwaSyncEnabled: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),

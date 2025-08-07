@@ -60,8 +60,14 @@ export function setupSocketEvents(io) {
     socket.on("disconnect", (reason) => {
       console.log(`Socket ${socket.id} disconnecting, reason: ${reason}`);
       
+      // Safety check for userId
+      if (!userId) {
+        console.warn("⚠️ Disconnect handler called but userId is undefined");
+        return;
+      }
+      
       const userSockets = connectedUsers.get(userId) || [];
-      const updatedSockets = userSockets.filter(s => s.id !== socket.id);
+      const updatedSockets = userSockets.filter(s => s && s.id && s.id !== socket.id);
       
       if (updatedSockets.length === 0) {
         connectedUsers.delete(userId);
@@ -82,7 +88,7 @@ export function setupSocketEvents(io) {
 export function emitToUser(userId, event, data) {
   const sockets = connectedUsers.get(userId);
   
-  if (!sockets || sockets.length === 0) {
+  if (!sockets || !Array.isArray(sockets) || sockets.length === 0) {
     console.log(`No active sockets for user ${userId}, skipping emit for event: ${event}`);
     return;
   }
