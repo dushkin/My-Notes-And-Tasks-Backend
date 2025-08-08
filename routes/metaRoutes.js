@@ -2,8 +2,85 @@ import express from 'express';
 import User from '../models/User.js';
 import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
 import logger from '../config/logger.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
+
+/**
+ * @openapi
+ * /meta/version:
+ *   get:
+ *     tags:
+ *       - Meta
+ *     summary: Get current app version information
+ *     description: Returns version, build time, and environment information for cache busting and update checks.
+ *     responses:
+ *       '200':
+ *         description: Version information retrieved successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 version:
+ *                   type: string
+ *                   description: Current app version
+ *                   example: "1.2.3"
+ *                 buildTime:
+ *                   type: string
+ *                   description: When this version was built
+ *                   example: "2025-01-08T16:30:00.000Z"
+ *                 environment:
+ *                   type: string
+ *                   description: Current environment
+ *                   example: "production"
+ */
+router.get('/version', catchAsync(async (req, res, next) => {
+  try {
+    // Try to get version from environment first
+    let version = process.env.APP_VERSION;
+    
+    // Fallback to package.json
+    if (!version) {
+      try {
+        const packagePath = path.join(__dirname, '..', 'package.json');
+        const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
+        version = packageJson.version;
+      } catch (error) {
+        version = '1.0.0'; // Ultimate fallback
+      }
+    }
+    
+    const buildTime = process.env.BUILD_TIME || new Date().toISOString();
+    const environment = process.env.NODE_ENV || 'development';
+    
+    // Set cache control headers to prevent caching of version info
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+    
+    res.status(200).json({
+      version,
+      buildTime,
+      environment
+    });
+    
+  } catch (error) {
+    logger.error('Error getting version info:', {
+      error: error.message,
+      stack: error.stack
+    });
+    
+    return next(new AppError('Unable to retrieve version information', 500));
+  }
+}));
 
 /**
  * @openapi
