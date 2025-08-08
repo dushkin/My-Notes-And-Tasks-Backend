@@ -144,6 +144,7 @@ export const createItem = catchAsync(async (req, res, next) => {
     await user.save();
     
     // Wrap socket emission in try-catch to prevent server crashes
+    // Emit to other devices but not the originating client to prevent duplicate adds
     try {
         emitToUser(user._id.toString(), 'itemCreated', { newItem, parentId });
     } catch (socketError) {

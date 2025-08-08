@@ -1,5 +1,7 @@
 #!/bin/bash
 
+clear
+
 # --- Configuration ---
 # Ensure your GOOGLE_API_KEY is set as an environment variable.
 # Run this in your terminal: export GOOGLE_API_KEY="YOUR_API_KEY_HERE"
