@@ -54,7 +54,21 @@ router.post("/subscribe", async (req, res) => {
         const subscription = req.body;
         const deviceId = req.header('X-Device-ID') || req.deviceId;
         
+        logger.debug('Push subscription request received:', {
+            userId: req.user?.id,
+            hasSubscription: !!subscription,
+            subscriptionKeys: subscription ? Object.keys(subscription) : [],
+            endpoint: subscription?.endpoint,
+            endpointType: typeof subscription?.endpoint,
+            rawBody: subscription
+        });
+        
         if (!subscription || !subscription.endpoint) {
+            logger.error('Invalid subscription data:', {
+                subscription,
+                hasSubscription: !!subscription,
+                hasEndpoint: !!subscription?.endpoint
+            });
             return res.status(400).json({
                 success: false,
                 message: "Invalid subscription"
@@ -100,6 +114,12 @@ router.post("/subscribe", async (req, res) => {
             });
             // Continue to try old model for backward compatibility
         }
+
+        // Clean up any existing null endpoint records first (caused by previous bug)
+        await PushSubscription.deleteMany({
+            userId: req.user.id,
+            'subscription.endpoint': null
+        });
 
         // Also create in old PushSubscription model for backward compatibility
         try {
