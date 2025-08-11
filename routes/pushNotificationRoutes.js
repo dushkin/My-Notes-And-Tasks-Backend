@@ -75,12 +75,20 @@ router.post("/subscribe", async (req, res) => {
             });
         }
 
-        // FIRST: Clean up any existing null endpoint records (caused by previous bug)
-        await PushSubscription.deleteMany({
+        // FIRST: Clean up any existing corrupted records (caused by previous bug)
+        const nullCleanup = await PushSubscription.deleteMany({
             userId: req.user.id,
-            'subscription.endpoint': null
+            $or: [
+                { 'subscription.endpoint': null },
+                { 'subscription.endpoint': undefined },
+                { 'subscription': null },
+                { 'subscription': undefined }
+            ]
         });
-        logger.debug('Cleaned up null endpoint records for user');
+        logger.info('Cleaned up corrupted subscription records', {
+            userId: req.user.id,
+            deletedCount: nullCleanup.deletedCount
+        });
 
         // Check if subscription already exists in old PushSubscription model
         const existingSubscription = await PushSubscription.findOne({
@@ -269,6 +277,38 @@ router.post("/test", async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Failed to send test notification"
+        });
+    }
+});
+
+// TEMPORARY: Manual cleanup endpoint for corrupted subscriptions
+router.delete("/cleanup", async (req, res) => {
+    try {
+        const result = await PushSubscription.deleteMany({
+            userId: req.user.id,
+            $or: [
+                { 'subscription.endpoint': null },
+                { 'subscription.endpoint': undefined },
+                { 'subscription.endpoint': "" },
+                { 'subscription': null },
+                { 'subscription': undefined }
+            ]
+        });
+        
+        logger.info('Manual cleanup completed', {
+            userId: req.user.id,
+            deletedCount: result.deletedCount
+        });
+        
+        res.status(200).json({
+            success: true,
+            message: `Cleaned up ${result.deletedCount} corrupted subscription records`
+        });
+    } catch (error) {
+        logger.error('Manual cleanup failed:', error);
+        res.status(500).json({
+            success: false,
+            message: "Cleanup failed"
         });
     }
 });
