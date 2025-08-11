@@ -75,6 +75,13 @@ router.post("/subscribe", async (req, res) => {
             });
         }
 
+        // FIRST: Clean up any existing null endpoint records (caused by previous bug)
+        await PushSubscription.deleteMany({
+            userId: req.user.id,
+            'subscription.endpoint': null
+        });
+        logger.debug('Cleaned up null endpoint records for user');
+
         // Check if subscription already exists in old PushSubscription model
         const existingSubscription = await PushSubscription.findOne({
             userId: req.user.id,
@@ -114,12 +121,6 @@ router.post("/subscribe", async (req, res) => {
             });
             // Continue to try old model for backward compatibility
         }
-
-        // Clean up any existing null endpoint records first (caused by previous bug)
-        await PushSubscription.deleteMany({
-            userId: req.user.id,
-            'subscription.endpoint': null
-        });
 
         // Also create in old PushSubscription model for backward compatibility
         try {
