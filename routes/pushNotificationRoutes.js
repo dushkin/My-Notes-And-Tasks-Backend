@@ -79,13 +79,43 @@ router.post("/subscribe", async (req, res) => {
         }
 
         // Add to new User model push subscriptions
-        await req.user.addPushSubscription(subscription, deviceId);
+        try {
+            logger.debug('Attempting to add push subscription to User model', {
+                userId: req.user.id,
+                hasSubscriptions: !!req.user.pushSubscriptions,
+                subscriptionData: {
+                    endpoint: subscription.endpoint?.substring(0, 50) + '...',
+                    hasKeys: !!subscription.keys,
+                    hasP256dh: !!subscription.keys?.p256dh,
+                    hasAuth: !!subscription.keys?.auth
+                }
+            });
+            await req.user.addPushSubscription(subscription, deviceId);
+            logger.debug('Successfully added subscription to User model');
+        } catch (userModelError) {
+            logger.error('Failed to add subscription to User model:', {
+                userId: req.user.id,
+                error: userModelError.message,
+                stack: userModelError.stack
+            });
+            // Continue to try old model for backward compatibility
+        }
 
         // Also create in old PushSubscription model for backward compatibility
-        await PushSubscription.create({ 
-            userId: req.user.id, 
-            subscription 
-        });
+        try {
+            await PushSubscription.create({ 
+                userId: req.user.id, 
+                subscription 
+            });
+            logger.debug('Successfully created subscription in PushSubscription model');
+        } catch (legacyModelError) {
+            logger.error('Failed to create subscription in legacy PushSubscription model:', {
+                userId: req.user.id,
+                error: legacyModelError.message
+            });
+            // This is more critical since this was the working model
+            throw legacyModelError;
+        }
 
         logger.info('Push subscription created successfully', {
             userId: req.user.id,
