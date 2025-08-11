@@ -349,39 +349,43 @@ function initializeDeviceSyncService() {
 }
 
 console.log("🌐 Setting up CORS...");
-const allowedOriginsStr =
-    process.env.ALLOWED_ORIGINS || "http://localhost:5173,https://localhost:5173";
-// if user set ALLOWED_ORIGINS="*", treat it as wildcard
-function isLocalOrigin(origin) {
-    try {
-        if (!origin) return false;
-        // Handle schemes: http(s)://localhost[:port], capacitor://localhost
-        if (origin.startsWith('capacitor://localhost')) return true;
-        const u = new URL(origin);
-        return u.hostname === 'localhost' || u.hostname === '127.0.0.1';
-    } catch (_) {
-        return false;
+
+// Explicit allow-list for app + web
+const allowedOrigins = [
+"https://localhost",
+  "http://localhost",
+  "http://localhost:5173",
+  "https://localhost:5173",
+  "capacitor://localhost",
+  "https://notask.co",
+  "https://www.notask.co"
+];
+
+// Helper for logging
+function logCorsDecision(allowed, origin) {
+    const msg = allowed ? "CORS: Origin allowed" : "CORS: Origin not allowed";
+    if (allowed) {
+        logger && logger.info && logger.info(msg, { origin });
+        console.log(msg, origin);
+    } else {
+        logger && logger.warn && logger.warn(msg, { origin, allowedOrigins });
+        console.warn(msg, origin);
     }
 }
-const allowedOriginsList =
-    allowedOriginsStr.trim() === "*"
-        ? "*"
-        : allowedOriginsStr.split(",").map((orig) => orig.trim());
+
 const corsOptions = {
     origin: (origin, callback) => {
-        if (!origin) return callback(null, true);
-        if (isLocalOrigin(origin)) {
+        // Allow requests with no Origin header (mobile apps, curl, same-origin)
+        if (!origin) {
+            logCorsDecision(true, "(no-origin)");
             return callback(null, true);
         }
-        if (allowedOriginsList === "*" || allowedOriginsList.indexOf(origin) !== -1) {
+        if (allowedOrigins.includes(origin)) {
+            logCorsDecision(true, origin);
             return callback(null, true);
         }
-        // Special-case allow https://localhost (no port) and http://localhost (no port)
-        if (origin === "https://localhost" || origin === "http://localhost") {
-            return callback(null, true);
-        }
-        logger && logger.warn && logger.warn("CORS: Origin not allowed", { origin, allowedOriginsList });
-        callback(new Error("Not allowed by CORS"));
+        logCorsDecision(false, origin);
+        return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
     optionsSuccessStatus: 200,
@@ -391,24 +395,21 @@ const corsOptions = {
         "Authorization",
         "Accept",
         "Origin",
-        "X-Requested-With",
+        "X-Requested-With"
     ],
-    exposedHeaders: ["Content-Length", "Content-Type"],
+    exposedHeaders: ["Content-Length", "Content-Type"]
 };
+
 try {
     console.log("🔧 Applying CORS middleware...");
     app.use(cors(corsOptions));
     console.log("✅ CORS middleware applied");
-    logger.info("CORS middleware initialized", {
-        configuredOrigins:
-            allowedOriginsList === "*" ? "All (*)" : allowedOriginsList,
-    });
+    logger.info("CORS middleware initialized (explicit allow-list)", { allowedOrigins });
 } catch (err) {
     console.error("❌ Failed to apply CORS middleware:", err.message);
     console.error(err.stack);
     process.exit(1);
 }
-
 console.log("📝 Setting up request logging middleware...");
 app.use((req, res, next) => {
     const start = Date.now();
