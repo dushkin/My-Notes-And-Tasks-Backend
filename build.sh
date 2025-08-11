@@ -99,6 +99,10 @@ echo -e "📄 Generated Commit Message:\n---\n$COMMIT_MESSAGE\n---"
 
 # --- Git Operations ---
 
+# Ensure all package files are included (in case they were modified after initial git add)
+echo "📦 Ensuring all package files are staged for commit..."
+git add package.json package-lock.json
+
 # Commit changes with the AI-generated message.
 git commit -m "$COMMIT_MESSAGE"
 
