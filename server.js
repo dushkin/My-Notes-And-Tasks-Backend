@@ -352,6 +352,17 @@ console.log("🌐 Setting up CORS...");
 const allowedOriginsStr =
     process.env.ALLOWED_ORIGINS || "http://localhost:5173,https://localhost:5173";
 // if user set ALLOWED_ORIGINS="*", treat it as wildcard
+function isLocalOrigin(origin) {
+    try {
+        if (!origin) return false;
+        // Handle schemes: http(s)://localhost[:port], capacitor://localhost
+        if (origin.startsWith('capacitor://localhost')) return true;
+        const u = new URL(origin);
+        return u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+    } catch (_) {
+        return false;
+    }
+}
 const allowedOriginsList =
     allowedOriginsStr.trim() === "*"
         ? "*"
@@ -359,15 +370,18 @@ const allowedOriginsList =
 const corsOptions = {
     origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-        if (
-            allowedOriginsList === "*" ||
-            allowedOriginsList.indexOf(origin) !== -1
-        ) {
-            callback(null, true);
-        } else {
-            logger.warn("CORS: Origin not allowed", { origin, allowedOriginsList });
-            callback(new Error("Not allowed by CORS"));
+        if (isLocalOrigin(origin)) {
+            return callback(null, true);
         }
+        if (allowedOriginsList === "*" || allowedOriginsList.indexOf(origin) !== -1) {
+            return callback(null, true);
+        }
+        // Special-case allow https://localhost (no port) and http://localhost (no port)
+        if (origin === "https://localhost" || origin === "http://localhost") {
+            return callback(null, true);
+        }
+        logger && logger.warn && logger.warn("CORS: Origin not allowed", { origin, allowedOriginsList });
+        callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
     optionsSuccessStatus: 200,
