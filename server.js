@@ -358,7 +358,8 @@ const allowedOrigins = [
   "https://localhost:5173",
   "capacitor://localhost",
   "https://notask.co",
-  "https://www.notask.co"
+  "https://www.notask.co",
+  "https://my-notes-and-tasks-dev.onrender.com"
 ];
 
 // Helper for logging
