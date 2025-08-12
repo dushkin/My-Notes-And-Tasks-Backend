@@ -40,7 +40,33 @@ export function setupSocketEvents(io) {
     connectedUsers.get(userId).push(socket);
     console.log(`User ${userId} connected. Total connections: ${connectedUsers.get(userId).length}`);
 
-    // NEW: Reminder relay events - just forward to all user's devices
+    // Relay item update events between client devices
+    socket.on('itemUpdated', (itemData) => {
+      console.log(`Relaying itemUpdated for user ${userId}:`, itemData);
+      emitToUser(userId, 'itemUpdated', itemData);
+    });
+
+    socket.on('itemCreated', (itemData) => {
+      console.log(`Relaying itemCreated for user ${userId}:`, itemData);
+      emitToUser(userId, 'itemCreated', itemData);
+    });
+
+    socket.on('itemDeleted', (itemData) => {
+      console.log(`Relaying itemDeleted for user ${userId}:`, itemData);
+      emitToUser(userId, 'itemDeleted', itemData);
+    });
+
+    socket.on('itemMoved', (itemData) => {
+      console.log(`Relaying itemMoved for user ${userId}:`, itemData);
+      emitToUser(userId, 'itemMoved', itemData);
+    });
+
+    socket.on('treeReplaced', (treeData) => {
+      console.log(`Relaying treeReplaced for user ${userId}:`, treeData);
+      emitToUser(userId, 'treeReplaced', treeData);
+    });
+
+    // Reminder relay events - just forward to all user's devices
     socket.on('reminder:set', (reminderData) => {
       console.log(`Relaying reminder:set for user ${userId}:`, reminderData);
       emitToUser(userId, 'reminder:set', reminderData);

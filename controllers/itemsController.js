@@ -216,13 +216,19 @@ export const updateItem = catchAsync(async (req, res, next) => {
     
     // Wrap socket emission in try-catch to prevent server crashes
     try {
+        console.log(`🔄 Attempting to emit itemUpdated for user ${user._id.toString()}:`, {
+            itemId: itemAfterInMemoryUpdate.id,
+            type: itemAfterInMemoryUpdate.type
+        });
         emitToUser(user._id.toString(), 'itemUpdated', itemAfterInMemoryUpdate);
+        console.log(`✅ Successfully emitted itemUpdated for user ${user._id.toString()}`);
     } catch (socketError) {
         logger.error('Socket emission failed for itemUpdated', { 
             userId, 
             itemId, 
             error: socketError.message 
         });
+        console.error(`❌ Socket emission failed for itemUpdated:`, socketError);
     }
     
     logger.info('Item updated successfully', { userId, itemId });
