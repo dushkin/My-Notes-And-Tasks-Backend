@@ -112,12 +112,19 @@ export function setupSocketEvents(io) {
 }
 
 export function emitToUser(userId, event, data) {
+  console.log(`🔍 emitToUser called: userId=${userId}, event=${event}, totalUsers=${connectedUsers.size}`);
   const sockets = connectedUsers.get(userId);
   
   if (!sockets || !Array.isArray(sockets) || sockets.length === 0) {
-    console.log(`No active sockets for user ${userId}, skipping emit for event: ${event}`);
+    console.log(`❌ No active sockets for user ${userId}, skipping emit for event: ${event}`);
+    console.log(`🔍 ConnectedUsers map keys:`, Array.from(connectedUsers.keys()));
     return;
   }
+  
+  console.log(`📡 Found ${sockets.length} socket(s) for user ${userId}`);
+  sockets.forEach((socket, index) => {
+    console.log(`📡 Socket ${index}: id=${socket.id}, connected=${socket.connected}`);
+  });
 
   // Filter out disconnected sockets and emit to valid ones
   const validSockets = [];
