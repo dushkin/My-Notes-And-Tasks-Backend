@@ -60,43 +60,43 @@ export function setupSocketEvents(io) {
     // Relay item update events between client devices
     socket.on('itemUpdated', (itemData) => {
       console.log(`Relaying itemUpdated for user ${userId}:`, itemData);
-      emitToUser(userId, 'itemUpdated', itemData);
+      emitToUser(userId, 'itemUpdated', itemData, socket.id);
     });
 
     socket.on('itemCreated', (itemData) => {
       console.log(`Relaying itemCreated for user ${userId}:`, itemData);
-      emitToUser(userId, 'itemCreated', itemData);
+      emitToUser(userId, 'itemCreated', itemData, socket.id);
     });
 
     socket.on('itemDeleted', (itemData) => {
       console.log(`Relaying itemDeleted for user ${userId}:`, itemData);
-      emitToUser(userId, 'itemDeleted', itemData);
+      emitToUser(userId, 'itemDeleted', itemData, socket.id);
     });
 
     socket.on('itemMoved', (itemData) => {
       console.log(`Relaying itemMoved for user ${userId}:`, itemData);
-      emitToUser(userId, 'itemMoved', itemData);
+      emitToUser(userId, 'itemMoved', itemData, socket.id);
     });
 
     socket.on('treeReplaced', (treeData) => {
       console.log(`Relaying treeReplaced for user ${userId}:`, treeData);
-      emitToUser(userId, 'treeReplaced', treeData);
+      emitToUser(userId, 'treeReplaced', treeData, socket.id);
     });
 
     // Reminder relay events - just forward to all user's devices
     socket.on('reminder:set', (reminderData) => {
       console.log(`Relaying reminder:set for user ${userId}:`, reminderData);
-      emitToUser(userId, 'reminder:set', reminderData);
+      emitToUser(userId, 'reminder:set', reminderData, socket.id);
     });
 
     socket.on('reminder:clear', (data) => {
       console.log(`Relaying reminder:clear for user ${userId}:`, data);
-      emitToUser(userId, 'reminder:clear', data);
+      emitToUser(userId, 'reminder:clear', data, socket.id);
     });
 
     socket.on('reminder:update', (reminderData) => {
       console.log(`Relaying reminder:update for user ${userId}:`, reminderData);
-      emitToUser(userId, 'reminder:update', reminderData);
+      emitToUser(userId, 'reminder:update', reminderData, socket.id);
     });
 
     // Heartbeat mechanism handlers
@@ -153,8 +153,8 @@ export function setupSocketEvents(io) {
   });
 }
 
-export function emitToUser(userId, event, data) {
-  console.log(`🔍 emitToUser called: userId=${userId}, event=${event}, totalUsers=${connectedUsers.size}`);
+export function emitToUser(userId, event, data, excludeSocketId = null) {
+  console.log(`🔍 emitToUser called: userId=${userId}, event=${event}, totalUsers=${connectedUsers.size}, excludeSocketId=${excludeSocketId}`);
   const sockets = connectedUsers.get(userId);
   
   if (!sockets || !Array.isArray(sockets) || sockets.length === 0) {
@@ -170,13 +170,21 @@ export function emitToUser(userId, event, data) {
 
   // Filter out disconnected sockets and emit to valid ones
   const validSockets = [];
+  let emittedCount = 0;
   
   sockets.forEach(socket => {
     try {
       // Check if socket is still connected
       if (socket.connected) {
-        socket.emit(event, data);
-        validSockets.push(socket);
+        // Exclude the sender socket if specified
+        if (excludeSocketId && socket.id === excludeSocketId) {
+          console.log(`📡 Skipping emit to sender socket ${socket.id} for user ${userId}`);
+          validSockets.push(socket);
+        } else {
+          socket.emit(event, data);
+          validSockets.push(socket);
+          emittedCount++;
+        }
       } else {
         console.log(`Removing disconnected socket ${socket.id} for user ${userId}`);
       }
@@ -185,6 +193,8 @@ export function emitToUser(userId, event, data) {
       // Don't add this socket to validSockets as it's problematic
     }
   });
+
+  console.log(`📡 Emitted ${event} to ${emittedCount} socket(s) for user ${userId}`);
 
   // Update the connectedUsers map with only valid sockets
   if (validSockets.length === 0) {
