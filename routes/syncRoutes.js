@@ -2,24 +2,28 @@ import express from 'express';
 import authMiddleware from '../middleware/authMiddleware.js';
 import Device from '../models/Device.js';
 import logger from '../config/logger.js';
+import { syncValidationChains } from '../utils/syncValidation.js';
+import { 
+  validateSyncRequestSize, 
+  validateSyncPermissions, 
+  syncRateLimit, 
+  setSyncSecurityHeaders 
+} from '../middleware/syncSecurityMiddleware.js';
 
 const router = express.Router();
 
-// All other routes require authentication
+// Apply comprehensive security middleware to all sync endpoints
 router.use(authMiddleware);
+router.use(setSyncSecurityHeaders);
+router.use(validateSyncPermissions);
+router.use(syncRateLimit(100, 15)); // 100 requests per 15 minutes
+router.use(validateSyncRequestSize(5 * 1024 * 1024)); // 5MB max request size
 
 // Register device
-router.post('/devices/register', async (req, res) => {
+router.post('/devices/register', syncValidationChains.deviceRegister, async (req, res) => {
     try {
         const userId = req.user.id;
         const deviceInfo = req.body;
-
-        if (!deviceInfo || !deviceInfo.id) {
-            return res.status(400).json({
-                success: false,
-                message: 'Device information is required'
-            });
-        }
 
         // Check if device already exists
         let device = await Device.findOne({ 
@@ -165,7 +169,7 @@ router.get('/status', async (req, res) => {
 });
 
 // Trigger sync
-router.post('/trigger', async (req, res) => {
+router.post('/trigger', syncValidationChains.syncTrigger, async (req, res) => {
     try {
         const userId = req.user.id;
         const { deviceId, dataType = 'all' } = req.body;
@@ -200,17 +204,10 @@ router.post('/trigger', async (req, res) => {
 });
 
 // Update device activity
-router.post('/devices/activity', async (req, res) => {
+router.post('/devices/activity', syncValidationChains.deviceActivity, async (req, res) => {
     try {
         const userId = req.user.id;
         const { deviceId } = req.body;
-
-        if (!deviceId) {
-            return res.status(400).json({
-                success: false,
-                message: 'Device ID is required'
-            });
-        }
 
         await Device.updateOne(
             { userId, deviceId },

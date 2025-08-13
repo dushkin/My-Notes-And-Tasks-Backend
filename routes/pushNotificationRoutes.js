@@ -4,6 +4,7 @@ import PushSubscription from "../models/PushSubscription.js";
 import User from "../models/User.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import logger from '../config/logger.js';
+import { syncValidationChains } from '../utils/syncValidation.js';
 
 const router = express.Router();
 
@@ -49,7 +50,7 @@ router.get("/vapid-public-key", (req, res) => {
 router.use(authMiddleware);
 
 // Save subscription (enhanced with device tracking)
-router.post("/subscribe", async (req, res) => {
+router.post("/subscribe", syncValidationChains.pushSubscribe, async (req, res) => {
     try {
         const subscription = req.body;
         const deviceId = req.header('X-Device-ID') || req.deviceId;
@@ -62,18 +63,6 @@ router.post("/subscribe", async (req, res) => {
             endpointType: typeof subscription?.endpoint,
             rawBody: subscription
         });
-        
-        if (!subscription || !subscription.endpoint) {
-            logger.error('Invalid subscription data:', {
-                subscription,
-                hasSubscription: !!subscription,
-                hasEndpoint: !!subscription?.endpoint
-            });
-            return res.status(400).json({
-                success: false,
-                message: "Invalid subscription"
-            });
-        }
 
         // FIRST: Clean up any existing corrupted records (caused by previous bug)
         const nullCleanup = await PushSubscription.deleteMany({
@@ -171,7 +160,7 @@ router.post("/subscribe", async (req, res) => {
 });
 
 // Send test notification (enhanced)
-router.post("/test", async (req, res) => {
+router.post("/test", syncValidationChains.pushTest, async (req, res) => {
     try {
         // Get subscriptions from both models
         const oldSubscriptions = await PushSubscription.find({ userId: req.user.id });
