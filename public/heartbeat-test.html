@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket.IO Heartbeat Test</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .connected { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .disconnected { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .connecting { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .log { background: #f8f9fa; border: 1px solid #dee2e6; padding: 10px; height: 300px; overflow-y: scroll; font-family: monospace; font-size: 12px; }
+        button { padding: 8px 16px; margin: 5px; cursor: pointer; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 20px 0; }
+        .stat-card { background: #f8f9fa; padding: 15px; border-radius: 4px; border: 1px solid #dee2e6; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #007bff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Socket.IO Heartbeat Test Client</h1>
+        
+        <div id="status" class="status disconnected">
+            Status: Disconnected
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="ping-count">0</div>
+                <div>Pings Sent</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="pong-count">0</div>
+                <div>Pongs Received</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="uptime">0s</div>
+                <div>Connection Time</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="reconnect-count">0</div>
+                <div>Reconnect Attempts</div>
+            </div>
+        </div>
+        
+        <div>
+            <button onclick="connect()">Connect</button>
+            <button onclick="disconnect()">Disconnect</button>
+            <button onclick="sendPing()">Manual Ping</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+        
+        <div>
+            <h3>Connection Log</h3>
+            <div id="log" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let pingCount = 0;
+        let pongCount = 0;
+        let reconnectCount = 0;
+        let connectTime = null;
+        let uptimeInterval = null;
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${time}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateStatus(status, className) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = `Status: ${status}`;
+            statusDiv.className = `status ${className}`;
+        }
+
+        function updateStats() {
+            document.getElementById('ping-count').textContent = pingCount;
+            document.getElementById('pong-count').textContent = pongCount;
+            document.getElementById('reconnect-count').textContent = reconnectCount;
+        }
+
+        function startUptime() {
+            connectTime = Date.now();
+            uptimeInterval = setInterval(() => {
+                if (connectTime) {
+                    const seconds = Math.floor((Date.now() - connectTime) / 1000);
+                    document.getElementById('uptime').textContent = `${seconds}s`;
+                }
+            }, 1000);
+        }
+
+        function stopUptime() {
+            if (uptimeInterval) {
+                clearInterval(uptimeInterval);
+                uptimeInterval = null;
+            }
+            connectTime = null;
+            document.getElementById('uptime').textContent = '0s';
+        }
+
+        function connect() {
+            if (socket && socket.connected) {
+                log('❌ Already connected');
+                return;
+            }
+
+            updateStatus('Connecting...', 'connecting');
+            log('🔌 Attempting to connect...');
+
+            // Use a test token (in real app, this would be a valid JWT)
+            socket = io('http://localhost:5001', {
+                auth: { token: 'test-token-for-heartbeat' }, // This will fail auth but test connection
+                timeout: 10000,
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                randomizationFactor: 0.5,
+            });
+
+            socket.on('connect', () => {
+                log('✅ Connected! Socket ID: ' + socket.id);
+                updateStatus('Connected', 'connected');
+                startUptime();
+            });
+
+            socket.on('connect_error', (error) => {
+                log('❌ Connection error: ' + error.message);
+                updateStatus('Connection Error', 'disconnected');
+                stopUptime();
+            });
+
+            socket.on('disconnect', (reason) => {
+                log('🔌 Disconnected: ' + reason);
+                updateStatus('Disconnected', 'disconnected');
+                stopUptime();
+            });
+
+            socket.on('reconnect_attempt', (attemptNumber) => {
+                reconnectCount = attemptNumber;
+                log(`🔄 Reconnection attempt #${attemptNumber}`);
+                updateStatus(`Reconnecting... (${attemptNumber})`, 'connecting');
+                updateStats();
+            });
+
+            socket.on('reconnect_failed', () => {
+                log('❌ Failed to reconnect after maximum attempts');
+                updateStatus('Reconnection Failed', 'disconnected');
+            });
+
+            // Heartbeat handlers
+            socket.on('ping', () => {
+                log('💓 Ping received from server');
+                socket.emit('pong'); // Respond to server ping
+            });
+
+            socket.on('pong', () => {
+                pongCount++;
+                log('💓 Pong received from server');
+                updateStats();
+            });
+        }
+
+        function disconnect() {
+            if (socket) {
+                log('🔌 Manually disconnecting...');
+                socket.disconnect();
+                socket = null;
+                pingCount = 0;
+                pongCount = 0;
+                reconnectCount = 0;
+                stopUptime();
+                updateStats();
+            }
+        }
+
+        function sendPing() {
+            if (socket && socket.connected) {
+                pingCount++;
+                socket.emit('ping');
+                log('💓 Manual ping sent');
+                updateStats();
+            } else {
+                log('❌ Cannot send ping - not connected');
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // Auto-connect on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            log('🚀 Heartbeat test client loaded');
+            // Uncomment to auto-connect:
+            // connect();
+        });
+    </script>
+</body>
+</html>
