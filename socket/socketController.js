@@ -165,7 +165,7 @@ export function emitToUser(userId, event, data, excludeSocketId = null) {
   
   console.log(`📡 Found ${sockets.length} socket(s) for user ${userId}`);
   sockets.forEach((socket, index) => {
-    console.log(`📡 Socket ${index}: id=${socket.id}, connected=${socket.connected}`);
+    console.log(`📡 Socket ${index}: id=${socket.id}, connected=${socket.connected}, excludeSocketId=${excludeSocketId}`);
   });
 
   // Filter out disconnected sockets and emit to valid ones
