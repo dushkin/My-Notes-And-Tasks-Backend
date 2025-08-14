@@ -115,6 +115,14 @@ router.patch(
       .optional()
       .isIn(['note', 'folder', 'task'])
       .withMessage('Type must be "note", "folder", or "task"'),
+    body('version')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Version must be a positive integer'),
+    body('expectedVersion')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Expected version must be a positive integer'),
     validate,
   ],
   validateItemNameMiddleware, // Only validates label if present

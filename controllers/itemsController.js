@@ -138,6 +138,7 @@ export const createItem = catchAsync(async (req, res, next) => {
         type: type,
         createdAt: now,
         updatedAt: now,
+        version: 1, // Initialize version for new items
     };
     if (type === 'folder') {
         newItem.children = [];
@@ -213,7 +214,35 @@ export const updateItem = catchAsync(async (req, res, next) => {
         }
     }
 
-    const updatedTreeInMemory = updateItemInTree(currentTree, itemId, updates);
+    // Enable version control for content updates
+    const versionControlOptions = {
+        enforceVersionControl: updates.hasOwnProperty('content') || updates.hasOwnProperty('expectedVersion')
+    };
+    
+    const updateResult = updateItemInTree(currentTree, itemId, updates, versionControlOptions);
+    
+    // Handle version conflicts
+    if (updateResult.conflict) {
+        logger.warn('Version conflict detected during item update', {
+            userId,
+            itemId,
+            serverVersion: updateResult.conflict.serverVersion,
+            clientVersion: updateResult.conflict.clientVersion
+        });
+        
+        return res.status(409).json({
+            error: 'Version conflict detected',
+            conflict: {
+                itemId: updateResult.conflict.itemId,
+                serverVersion: updateResult.conflict.serverVersion,
+                clientVersion: updateResult.conflict.clientVersion,
+                serverItem: updateResult.conflict.serverItem,
+                message: 'The item has been modified by another client. Please refresh and try again.'
+            }
+        });
+    }
+    
+    const updatedTreeInMemory = updateResult.tree;
     const itemAfterInMemoryUpdateResult = findItemRecursive(updatedTreeInMemory, itemId);
 
     const itemAfterInMemoryUpdate = itemAfterInMemoryUpdateResult ? itemAfterInMemoryUpdateResult.item : null;

@@ -89,11 +89,31 @@ export function deleteItemInTree(nodes, itemId) {
     return treeChangedInChildren ? processedNodes : nodes;
 }
 
-export function updateItemInTree(nodes, itemId, updates) {
-    if (!Array.isArray(nodes) || !itemId || !updates || Object.keys(updates).length === 0) return nodes;
+export function updateItemInTree(nodes, itemId, updates, options = {}) {
+    if (!Array.isArray(nodes) || !itemId || !updates || Object.keys(updates).length === 0) return { tree: nodes, conflict: null };
+    
     let treeModified = false;
+    let versionConflict = null;
+    
     const newNodes = nodes.map(item => {
         if (item.id === itemId) {
+            // Version conflict detection
+            if (options.enforceVersionControl && updates.hasOwnProperty('version')) {
+                const currentVersion = item.version || 1;
+                const expectedVersion = updates.expectedVersion;
+                
+                if (expectedVersion !== undefined && expectedVersion !== currentVersion) {
+                    versionConflict = {
+                        itemId,
+                        serverVersion: currentVersion,
+                        clientVersion: expectedVersion,
+                        serverItem: item,
+                        clientUpdates: updates
+                    };
+                    return item; // Return original item without changes
+                }
+            }
+            
             const allowedUpdates = {};
             let itemChanged = false;
 
@@ -133,20 +153,29 @@ export function updateItemInTree(nodes, itemId, updates) {
             if (itemChanged) {
                 treeModified = true;
                 allowedUpdates.updatedAt = new Date().toISOString();
+                // Increment version number
+                allowedUpdates.version = (item.version || 1) + 1;
                 return { ...item, ...allowedUpdates };
             }
             return item;
         }
         if (item.type === 'folder' && Array.isArray(item.children)) {
-            const updatedChildren = updateItemInTree(item.children, itemId, updates);
-            if (updatedChildren !== item.children) {
+            const childResult = updateItemInTree(item.children, itemId, updates, options);
+            if (childResult.conflict) {
+                versionConflict = childResult.conflict;
+            }
+            if (childResult.tree !== item.children) {
                 treeModified = true;
-                return { ...item, children: updatedChildren, updatedAt: new Date().toISOString() };
+                return { ...item, children: childResult.tree, updatedAt: new Date().toISOString() };
             }
         }
         return item;
     });
-    return treeModified ? newNodes : nodes;
+    
+    return {
+        tree: treeModified ? newNodes : nodes,
+        conflict: versionConflict
+    };
 }
 
 export function hasSiblingWithName(siblings, nameToCheck, excludeId = null) {
@@ -185,6 +214,11 @@ export function ensureServerSideIdsAndStructure(item) {
         newItem.createdAt = now;
     }
     newItem.updatedAt = now;
+    
+    // Initialize version if not present
+    if (!newItem.version || typeof newItem.version !== 'number') {
+        newItem.version = 1;
+    }
 
     if (newItem.type === 'folder') {
         newItem.children = Array.isArray(newItem.children)
