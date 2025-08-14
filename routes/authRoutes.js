@@ -1,5 +1,12 @@
+// ============================================================================
+// CORE IMPORTS
+// ============================================================================
 import express from 'express';
 import { body, validationResult } from 'express-validator';
+
+// ============================================================================
+// CONTROLLERS
+// ============================================================================
 import {
   register,
   login,
@@ -8,44 +15,78 @@ import {
   logoutAll,
   verifyToken
 } from '../controllers/authController.js';
+
+// ============================================================================
+// MIDDLEWARE
+// ============================================================================
 import authMiddleware from '../middleware/authMiddleware.js';
 import { authLimiter } from '../middleware/rateLimiterMiddleware.js';
 import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
+
+// ============================================================================
+// MODELS
+// ============================================================================
 import User from '../models/User.js';
 import RefreshToken from '../models/refreshToken.js';
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
 import logger from '../config/logger.js';
 
+// ============================================================================
+// ROUTER SETUP
+// ============================================================================
 const router = express.Router();
 
-const validate = (req, res, next) => {
+// ============================================================================
+// MIDDLEWARE FUNCTIONS
+// ============================================================================
+
+/**
+ * Validate request using express-validator
+ */
+const validateRequest = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    const errorMessages = errors.array().map(err => err.msg);
-    let flatErrorMessages = [];
-    errorMessages.forEach(msg => {
-      if (Array.isArray(msg)) {
-        flatErrorMessages = flatErrorMessages.concat(msg);
-      } else {
-        flatErrorMessages.push(msg);
-      }
-    });
+    const flatErrorMessages = flattenValidationErrors(errors.array());
+    
     logger.warn('Validation error in authRoutes', {
       errors: flatErrorMessages,
       path: req.path,
       ip: req.ip
     });
+    
     return next(new AppError(flatErrorMessages.join(', ') || 'Validation error', 400));
   }
   next();
 };
 
-// Beta limit check middleware
+/**
+ * Flatten nested validation error messages
+ */
+const flattenValidationErrors = (errors) => {
+  const errorMessages = errors.map(err => err.msg);
+  let flatErrorMessages = [];
+  
+  errorMessages.forEach(msg => {
+    if (Array.isArray(msg)) {
+      flatErrorMessages = flatErrorMessages.concat(msg);
+    } else {
+      flatErrorMessages.push(msg);
+    }
+  });
+  
+  return flatErrorMessages;
+};
+
+/**
+ * Check beta user limit middleware
+ */
 const checkBetaUserLimit = catchAsync(async (req, res, next) => {
-  // Check if beta limiting is enabled
   const betaEnabled = process.env.BETA_ENABLED === 'true';
   
   if (!betaEnabled) {
-    // Beta limiting is disabled, proceed normally
     return next();
   }
 
@@ -144,7 +185,7 @@ router.post(
     body('password')
       .isLength({ min: 8 }).withMessage('Password must be at least 8 characters long.')
   ],
-  validate,
+  validateRequest,
   checkBetaUserLimit, // Add beta limit check before registration
   register
 );
@@ -200,7 +241,7 @@ router.post(
     body('password')
       .notEmpty().withMessage('Password is required.')
   ],
-  validate,
+  validateRequest,
   login
 );
 
@@ -266,7 +307,7 @@ router.post(
       .notEmpty().withMessage('Refresh token is required.')
       .isString().withMessage('Refresh token must be a string.')
   ],
-  validate,
+  validateRequest,
   refreshToken
 );
 
@@ -315,7 +356,7 @@ router.post(
       .isString().withMessage('Refresh token must be a string if provided')
       .isLength({ min: 10 }).withMessage('Invalid refresh token format')
   ],
-  validate,
+  validateRequest,
   logout
 );
 

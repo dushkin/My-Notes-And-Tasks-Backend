@@ -1,23 +1,23 @@
+// ============================================================================
+// CORE IMPORTS AND SETUP
+// ============================================================================
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
+import "dotenv/config";
+
+// ============================================================================
+// SOCKET IMPORTS
+// ============================================================================
 import { initSocketIO } from "./socketEvents.js";
 import { setupSocketEvents } from "./socket/socketController.js";
 
-import "dotenv/config";
-// Add more detailed error logging at the very beginning
+// ============================================================================
+// INITIALIZATION AND ERROR HANDLING SETUP
+// ============================================================================
 console.log("🚀 Starting server.js...");
-// Wrap the error handlers import in try-catch
-let errorHandlers;
-try {
-    console.log("📦 Importing error handlers...");
-    errorHandlers = await import("./middleware/errorHandlerMiddleware.js");
-    console.log("✅ Error handlers imported successfully");
-} catch (err) {
-    console.error("❌ Failed to import error handlers:", err.message);
-    console.error(err.stack);
-    process.exit(1);
-}
 
+// Import error handlers with proper error handling
+const errorHandlers = await initializeErrorHandlers();
 const {
     globalErrorHandler,
     notFoundHandler,
@@ -26,30 +26,69 @@ const {
     catchAsync,
     AppError,
 } = errorHandlers;
-// Initialize exception handlers
-try {
-    console.log("🛡️ Initializing exception handlers...");
-    handleUncaughtException();
-    console.log("✅ Exception handlers initialized");
-} catch (err) {
-    console.error("❌ Failed to initialize exception handlers:", err.message);
-    process.exit(1);
+
+// Setup process-level error handlers
+setupProcessErrorHandlers();
+await initializeExceptionHandlers();
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Initialize error handlers with proper error handling
+ */
+async function initializeErrorHandlers() {
+    try {
+        console.log("📦 Importing error handlers...");
+        const handlers = await import("./middleware/errorHandlerMiddleware.js");
+        console.log("✅ Error handlers imported successfully");
+        return handlers;
+    } catch (err) {
+        console.error("❌ Failed to import error handlers:", err.message);
+        console.error(err.stack);
+        process.exit(1);
+    }
 }
 
-// Enhanced process error handlers
-process.on("uncaughtException", (err) => {
-    console.error("🔥 UNCAUGHT EXCEPTION DETAILS:");
-    console.error("Error name:", err.name);
-    console.error("Error message:", err.message);
-    console.error("Error stack:", err.stack);
-    process.exit(1);
-});
-process.on("unhandledRejection", (err) => {
-    console.error("🔥 UNHANDLED REJECTION DETAILS:");
-    console.error("Error:", err);
-    console.error("Stack:", err.stack);
-    process.exit(1);
-});
+/**
+ * Initialize exception handlers
+ */
+async function initializeExceptionHandlers() {
+    try {
+        console.log("🛡️ Initializing exception handlers...");
+        handleUncaughtException();
+        console.log("✅ Exception handlers initialized");
+    } catch (err) {
+        console.error("❌ Failed to initialize exception handlers:", err.message);
+        process.exit(1);
+    }
+}
+
+/**
+ * Setup enhanced process error handlers
+ */
+function setupProcessErrorHandlers() {
+    process.on("uncaughtException", (err) => {
+        console.error("🔥 UNCAUGHT EXCEPTION DETAILS:");
+        console.error("Error name:", err.name);
+        console.error("Error message:", err.message);
+        console.error("Error stack:", err.stack);
+        process.exit(1);
+    });
+    
+    process.on("unhandledRejection", (err) => {
+        console.error("🔥 UNHANDLED REJECTION DETAILS:");
+        console.error("Error:", err);
+        console.error("Stack:", err.stack);
+        process.exit(1);
+    });
+}
+
+// ============================================================================
+// MODULE IMPORTS
+// ============================================================================
+
 // Import core modules with error handling
 let express,
     cors,

@@ -1,5 +1,16 @@
-import { emitToUser } from "../socket/socketController.js";
+// ============================================================================
+// MODELS AND DATA
+// ============================================================================
 import User from '../models/User.js';
+
+// ============================================================================
+// MIDDLEWARE AND ERROR HANDLING
+// ============================================================================
+import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
+
+// ============================================================================
+// UTILITIES AND HELPERS
+// ============================================================================
 import {
     sortItems,
     findItemRecursive,
@@ -10,8 +21,16 @@ import {
     uuidv4,
     findParentAndSiblings
 } from '../utils/backendTreeUtils.js';
-import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
 import { sanitizeContent } from '../utils/contentSanitizer.js';
+
+// ============================================================================
+// SERVICES AND COMMUNICATION
+// ============================================================================
+import { emitToUser } from "../socket/socketController.js";
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
 import logger from '../config/logger.js';
 
 function addMissingTimestampsToTree(nodes, defaultTimestamp) {

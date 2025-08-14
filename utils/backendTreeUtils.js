@@ -1,7 +1,17 @@
-// utils/backendTreeUtils.js
+// ============================================================================
+// BACKEND TREE UTILITIES
+// ============================================================================
+// Utilities for tree operations on the backend/server side
+
+// ============================================================================
+// IMPORTS
+// ============================================================================
 import { v4 as uuidv4_imported } from 'uuid';
 import { sanitizeContent } from './contentSanitizer.js';
 
+// ============================================================================
+// EXPORTS AND CONSTANTS
+// ============================================================================
 export const uuidv4 = uuidv4_imported;
 
 export function sortItems(items) {

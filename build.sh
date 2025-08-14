@@ -66,7 +66,7 @@ JSON_PAYLOAD=$(jq -n --arg changes "$CHANGES_SUMMARY" --arg priority "$PRIORITY_
 # Debug: Check JSON payload size
 echo "Debug: JSON payload size: $(echo "$JSON_PAYLOAD" | wc -c) characters"
 
-# Call the Gemini API using the 'gemini-1.5-flash' model.
+# Call the Gemini API using 'gemini-1.5-flash' model (more quota-friendly).
 API_RESPONSE=$(curl -s -X POST \
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_API_KEY}" \
   -H "Content-Type: application/json" \
@@ -78,10 +78,14 @@ echo "Debug: API Response: $API_RESPONSE"
 # Parse the response to get the commit message text and clean it up.
 COMMIT_MESSAGE=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text' 2>/dev/null | sed 's/`//g')
 
-# Check if the commit message was generated successfully.
-if [ "$COMMIT_MESSAGE" == "null" ] || [ -z "$COMMIT_MESSAGE" ] || echo "$API_RESPONSE" | grep -q "error"; then
+# Check if the commit message was generated successfully by looking for actual API errors
+API_ERROR=$(echo "$API_RESPONSE" | jq -r '.error.message' 2>/dev/null)
+if [ "$COMMIT_MESSAGE" == "null" ] || [ -z "$COMMIT_MESSAGE" ] || [ "$API_ERROR" != "null" ]; then
     echo "❌ Error: Failed to generate AI commit message."
-    echo "API Response: $API_RESPONSE"
+    if [ "$API_ERROR" != "null" ]; then
+        echo "API Error: $API_ERROR"
+    fi
+    echo "Full API Response: $API_RESPONSE"
     exit 1
 fi
 
