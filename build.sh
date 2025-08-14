@@ -13,8 +13,24 @@ if [ -z "$GOOGLE_API_KEY" ]; then
     exit 1
 fi
 
-# Extract version from package.json
-VERSION=$(jq -r '.version' package.json)
+# --- Auto-increment version in package.json ---
+echo "📈 Auto-incrementing version in package.json"
+CURRENT_VERSION=$(node -p "require('./package.json').version")
+echo "   Current version: $CURRENT_VERSION"
+
+# Increment patch version (x.y.z -> x.y.z+1)
+NEW_VERSION=$(node -e "
+  const fs = require('fs');
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  const [major, minor, patch] = pkg.version.split('.').map(Number);
+  pkg.version = \`\${major}.\${minor}.\${patch + 1}\`;
+  fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+  console.log(pkg.version);
+")
+echo "   New version: $NEW_VERSION"
+
+# Extract the new version for later use
+VERSION=$NEW_VERSION
 
 # --- AI Commit Message Generation ---
 
