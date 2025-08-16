@@ -45,11 +45,16 @@ HAS_DOCS_CHANGES=$(echo "$CHANGED_FILES" | grep -E '\.(md|txt)$' | wc -l)
 
 # Generate appropriate commit message based on changes
 if [[ "$HAS_CODE_CHANGES" -gt 0 ]]; then
+    # Get recent commit messages to describe what changed (exclude build commits)
+    RECENT_CHANGES=$(git log --oneline --since="1 week ago" --format="- %s" | grep -E "^- (feat:|fix:|refactor:)" | grep -v "^- (feat: backend improvements|config:|chore:)" | head -5)
+    if [[ -z "$RECENT_CHANGES" ]]; then
+      RECENT_CHANGES="- Backend functionality improvements and fixes"
+    fi
+    
     COMMIT_MSG="feat: backend improvements v${VERSION}
 
-- Updated backend functionality
-- Version bump to ${VERSION}
-- Enhanced API stability"
+${RECENT_CHANGES}
+- Version bump to ${VERSION}"
 elif [[ "$HAS_CONFIG_CHANGES" -gt 0 ]]; then
     COMMIT_MSG="config: update backend configuration v${VERSION}
 
