@@ -1,19 +1,10 @@
-// ============================================================================
-// CORE IMPORTS AND SETUP
-// ============================================================================
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import "dotenv/config";
 
-// ============================================================================
-// SOCKET IMPORTS
-// ============================================================================
 import { initSocketIO } from "./socketEvents.js";
 import { setupSocketEvents } from "./socket/socketController.js";
 
-// ============================================================================
-// INITIALIZATION AND ERROR HANDLING SETUP
-// ============================================================================
 console.log("🚀 Starting server.js...");
 
 // Import error handlers with proper error handling
@@ -31,9 +22,6 @@ const {
 setupProcessErrorHandlers();
 await initializeExceptionHandlers();
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
 
 /**
  * Initialize error handlers with proper error handling
@@ -85,9 +73,6 @@ function setupProcessErrorHandlers() {
     });
 }
 
-// ============================================================================
-// MODULE IMPORTS
-// ============================================================================
 
 // Import core modules with error handling
 let express,

@@ -4,7 +4,7 @@
 import crypto from 'crypto';
 
 // Your webhook secret from .env file
-const WEBHOOK_SECRET = 'pdl_ntfset_01jz8k8mp8hax7h4v1j9w3jz1q_6MVydG8chg7pSqdEDEeAsXtdk09ZqVVO'; // Replace with your actual secret
+const WEBHOOK_SECRET = 'pdl_ntfset_fake_secret'; // Replace with your real secret
 
 // Test payload
 const payload = JSON.stringify({
