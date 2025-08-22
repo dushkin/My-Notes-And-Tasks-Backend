@@ -48,11 +48,7 @@ if [ -z "$GOOGLE_API_KEY" ]; then
     COMMIT_MSG="feat: backend improvements v${VERSION}
 
 - Backend functionality improvements and fixes
-- Version bump to ${VERSION}
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+- Version bump to ${VERSION}"
     
     echo -e "📄 Fallback Commit Message:\n---\n$COMMIT_MSG\n---"
     git commit -m "$COMMIT_MSG"
@@ -136,18 +132,11 @@ else
         COMMIT_MSG="feat: backend improvements v${VERSION}
 
 - Backend functionality improvements and fixes  
-- Version bump to ${VERSION}
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+- Version bump to ${VERSION}"
     else
-        # Add Claude Code attribution to AI-generated message
-        COMMIT_MSG="${COMMIT_MSG}
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+        # AI-generated message is ready as-is
+        # No additional attribution needed
+        echo "✅ Using AI-generated commit message"
     fi
 
     echo -e "📄 Generated Commit Message:\n---\n$COMMIT_MSG\n---"
