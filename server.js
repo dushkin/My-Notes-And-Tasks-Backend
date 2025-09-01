@@ -709,6 +709,13 @@ try {
     console.log("👤 Registering account routes...");
     app.use("/api/account", authMiddleware, accountRoutes);
 
+    console.log("🔔 Registering reminders routes...");
+    app.use("/api/reminders", authMiddleware, (req, res, next) => {
+        // Socket.IO will be available after server starts
+        req.io = app.get('io');
+        next();
+    }, reminderRoutes);
+
     console.log("💳 Registering paddle webhook routes...");
     app.use("/api/paddle", paddleWebhook);
 
@@ -847,6 +854,9 @@ if (isMainModule) {
 
             const httpServer = createServer(app);
             const io = new SocketIOServer(httpServer, { cors: corsOptions });
+            
+            // Make Socket.IO available to routes
+            app.set('io', io);
 
             // Initialize existing socket events (if you have them)
             if (typeof initSocketIO === 'function') {
@@ -886,12 +896,7 @@ if (isMainModule) {
                 setupSocketEvents(io);
             }
 
-            // Register reminder routes with Socket.IO middleware (must be after io is created)
-            console.log("🔔 Registering reminders routes...");
-            app.use("/api/reminders", authMiddleware, (req, res, next) => {
-                req.io = io;
-                next();
-            }, reminderRoutes);
+            // Socket.IO reference is now available for reminder routes registered earlier
 
             io.on("connection", (socket) => {
                 console.log("🔗 Client connected:", socket.id, "User:", socket.userId);

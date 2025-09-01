@@ -2,14 +2,12 @@ import express from "express";
 import { body, param, validationResult } from 'express-validator';
 import Reminder from "../models/Reminder.js";
 import Task from "../models/Task.js";
-import authMiddleware from "../middleware/authMiddleware.js";
 import { catchAsync, AppError } from '../middleware/errorHandlerMiddleware.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
 
-// Apply auth middleware to all routes
-router.use(authMiddleware);
+// Note: authMiddleware is applied at the app level when registering this router
 
 // Validation middleware
 const validate = (req, res, next) => {
