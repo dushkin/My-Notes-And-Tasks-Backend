@@ -722,7 +722,11 @@ try {
     }
 
     console.log("🔔 Registering reminders routes...");
-    app.use("/api/reminders", authMiddleware, reminderRoutes);
+    // Add Socket.IO middleware for reminder routes
+    app.use("/api/reminders", authMiddleware, (req, res, next) => {
+        req.io = io;
+        next();
+    }, reminderRoutes);
 
     if (process.env.ENABLE_ADMIN_ROUTES !== "false") {
         console.log("🔧 Registering admin routes...");
