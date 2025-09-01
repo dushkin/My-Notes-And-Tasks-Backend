@@ -721,12 +721,6 @@ try {
         logger.info("Sync routes not available, skipping registration");
     }
 
-    console.log("🔔 Registering reminders routes...");
-    // Add Socket.IO middleware for reminder routes
-    app.use("/api/reminders", authMiddleware, (req, res, next) => {
-        req.io = io;
-        next();
-    }, reminderRoutes);
 
     if (process.env.ENABLE_ADMIN_ROUTES !== "false") {
         console.log("🔧 Registering admin routes...");
@@ -891,6 +885,13 @@ if (isMainModule) {
             if (typeof setupSocketEvents === 'function') {
                 setupSocketEvents(io);
             }
+
+            // Register reminder routes with Socket.IO middleware (must be after io is created)
+            console.log("🔔 Registering reminders routes...");
+            app.use("/api/reminders", authMiddleware, (req, res, next) => {
+                req.io = io;
+                next();
+            }, reminderRoutes);
 
             io.on("connection", (socket) => {
                 console.log("🔗 Client connected:", socket.id, "User:", socket.userId);
