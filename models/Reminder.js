@@ -22,28 +22,26 @@ const ReminderSchema = new mongoose.Schema(
       required: true,
       index: true
     },
-    repeatOptions: { 
+    repeatOptions: {
       type: {
-        type: { 
-          type: String, 
-          enum: ['daily', 'weekly', 'monthly', 'yearly'], 
-          required: true 
-        },
-        interval: { 
-          type: Number, 
-          default: 1,
-          min: 1
-        },
-        endDate: { 
-          type: Date, 
-          default: null 
-        },
-        daysOfWeek: [{ 
-          type: Number, 
-          min: 0, 
-          max: 6 
-        }] // For weekly repeats, 0 = Sunday
-      }
+        type: String,
+        enum: ['daily', 'weekly', 'monthly', 'yearly'],
+        required: true
+      },
+      interval: {
+        type: Number,
+        default: 1,
+        min: 1
+      },
+      endDate: {
+        type: Date,
+        default: null
+      },
+      daysOfWeek: [{
+        type: Number,
+        min: 0,
+        max: 6
+      }] // For weekly repeats, 0 = Sunday
     },
     snoozedUntil: { 
       type: Date, 
@@ -84,8 +82,8 @@ ReminderSchema.index({ userId: 1, itemId: 1 }, { unique: true });
 // Methods for handling repeat logic
 ReminderSchema.methods.getNextOccurrence = function() {
   if (!this.repeatOptions) return null;
-  
-  const { type, interval, endDate, daysOfWeek } = this.repeatOptions.type;
+
+  const { type, interval, endDate, daysOfWeek } = this.repeatOptions;
   const baseDate = this.snoozedUntil || this.timestamp;
   let nextDate = new Date(baseDate);
   
