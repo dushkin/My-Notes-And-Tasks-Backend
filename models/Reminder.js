@@ -85,7 +85,7 @@ ReminderSchema.index({ userId: 1, itemId: 1 }, { unique: true });
 ReminderSchema.methods.getNextOccurrence = function() {
   if (!this.repeatOptions) return null;
   
-  const { type, interval, endDate, daysOfWeek } = this.repeatOptions;
+  const { type, interval, endDate, daysOfWeek } = this.repeatOptions.type;
   const baseDate = this.snoozedUntil || this.timestamp;
   let nextDate = new Date(baseDate);
   

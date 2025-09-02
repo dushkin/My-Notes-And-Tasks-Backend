@@ -77,8 +77,12 @@ describe('Reminders API', () => {
         timestamp: new Date(Date.now() + 3600000).toISOString(), // 1 hour from now
         itemTitle: 'Test Item',
         repeatOptions: {
-          type: 'daily',
-          interval: 1
+          type: {
+            type: 'daily',
+            interval: 1,
+            endDate: null,
+            daysOfWeek: []
+          }
         }
       };
 
