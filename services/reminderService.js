@@ -4,17 +4,17 @@ import logger from '../config/logger.js';
  * Calculates the next occurrence time for a repeating reminder.
  */
 function calculateNextReminderTime(currentTime, repeatOptions) {
-    if (!repeatOptions || !repeatOptions.type || !repeatOptions.type.type || !repeatOptions.type.interval) {
+    if (!repeatOptions || !repeatOptions.type || !repeatOptions.interval) {
         return null;
     }
 
     const lastTime = new Date(currentTime);
     let nextTime = new Date(lastTime.getTime());
-    const interval = parseInt(repeatOptions.type.interval, 10) || 0;
+    const interval = parseInt(repeatOptions.interval, 10) || 0;
 
     if (interval <= 0) return null;
 
-    switch (repeatOptions.type.type) {
+    switch (repeatOptions.type) {
         case 'seconds': nextTime.setSeconds(nextTime.getSeconds() + interval); break;
         case 'minutes': nextTime.setMinutes(nextTime.getMinutes() + interval); break;
         case 'hours': nextTime.setHours(nextTime.getHours() + interval); break;

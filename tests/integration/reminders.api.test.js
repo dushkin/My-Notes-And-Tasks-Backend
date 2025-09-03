@@ -54,7 +54,7 @@ describe('Reminders API', () => {
 
     // Generate auth token
     authToken = jwt.sign(
-      { user: { id: userId } },
+      { user: { id: userId }, type: 'access' },
       process.env.JWT_SECRET || 'test-secret',
       { expiresIn: '1h' }
     );
@@ -77,12 +77,10 @@ describe('Reminders API', () => {
         timestamp: new Date(Date.now() + 3600000).toISOString(), // 1 hour from now
         itemTitle: 'Test Item',
         repeatOptions: {
-          type: {
-            type: 'daily',
-            interval: 1,
-            endDate: null,
-            daysOfWeek: []
-          }
+          type: 'daily',
+          interval: 1,
+          endDate: null,
+          daysOfWeek: []
         }
       };
 
