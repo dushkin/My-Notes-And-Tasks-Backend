@@ -36,6 +36,9 @@ class ReminderService {
         this.isRunning = false;
         this.isProcessing = false;
         this.cronJob = null;
+        this.lastCheckTime = null;
+        this.checkCount = 0;
+        this.processedCount = 0;
     }
 
     init() {
@@ -54,7 +57,10 @@ class ReminderService {
     async initializeCron() {
         try {
             const cron = await import('node-cron');
-            const schedule = process.env.REMINDER_CHECK_SCHEDULE || '* * * * *';
+            // Default: check every 10 seconds for second-level precision
+            // For even more precision, set REMINDER_CHECK_SCHEDULE='*/5 * * * * *' (5 seconds)
+            // or REMINDER_CHECK_SCHEDULE='* * * * * *' (1 second) - NOT recommended for production
+            const schedule = process.env.REMINDER_CHECK_SCHEDULE || '*/10 * * * * *';
             
             this.cronJob = cron.default.schedule(schedule, () => {
                 if (!this.isProcessing) {
@@ -128,24 +134,66 @@ class ReminderService {
 
     async checkAndSendReminders() {
         this.isProcessing = true;
-        const now = Date.now();
+        const now = new Date();
+        this.checkCount++;
+        this.lastCheckTime = now;
         
         try {
             // Import dependencies dynamically
+            const Reminder = (await import('../models/Reminder.js')).default;
             const User = (await import('../models/User.js')).default;
             
-            const usersWithReminders = await User.find({ 
-                'notesTree.reminder.timestamp': { $lte: now },
-                isVerified: true
-            }).select('_id email notesTree');
-
-            if (usersWithReminders.length === 0) {
-                logger.debug('No users with due reminders found.');
+            // Optimized query: only check reminders due within the last 30 seconds
+            // This prevents processing the same reminder multiple times
+            const thirtySecondsAgo = new Date(now.getTime() - 30 * 1000);
+            const dueReminders = await Reminder.find({
+                enabled: true,
+                $or: [
+                    { 
+                        snoozedUntil: null, 
+                        timestamp: { $lte: now, $gte: thirtySecondsAgo } 
+                    },
+                    { 
+                        snoozedUntil: { $lte: now, $gte: thirtySecondsAgo } 
+                    }
+                ]
+            }).sort({ timestamp: 1 });
+            
+            if (dueReminders.length === 0) {
+                if (this.checkCount % 60 === 0) { // Log every 10 minutes (60 * 10sec)
+                    logger.debug(`No due reminders found (checked ${this.checkCount} times, processed ${this.processedCount} reminders)`);
+                }
                 return;
             }
 
-            for (const user of usersWithReminders) {
-                await this.processUserReminders(user, now);
+            logger.info(`Processing ${dueReminders.length} due reminders (check #${this.checkCount})`);
+            this.processedCount += dueReminders.length;
+
+            // Group reminders by user for batch processing
+            const remindersByUser = new Map();
+            for (const reminder of dueReminders) {
+                if (!remindersByUser.has(reminder.userId.toString())) {
+                    remindersByUser.set(reminder.userId.toString(), []);
+                }
+                remindersByUser.get(reminder.userId.toString()).push(reminder);
+            }
+
+            // Process each user's reminders
+            for (const [userId, userReminders] of remindersByUser) {
+                await this.processUserCloudReminders(userId, userReminders);
+            }
+
+            // Also check old notesTree-based reminders for backward compatibility
+            // But only check this less frequently to avoid overhead
+            if (this.checkCount % 6 === 0) { // Every minute (6 * 10sec)
+                const usersWithLegacyReminders = await User.find({ 
+                    'notesTree.reminder.timestamp': { $lte: now },
+                    isVerified: true
+                }).select('_id email notesTree');
+
+                for (const user of usersWithLegacyReminders) {
+                    await this.processUserReminders(user, now.getTime());
+                }
             }
 
         } catch (error) {
@@ -208,11 +256,71 @@ class ReminderService {
         }
     }
 
+    async processUserCloudReminders(userId, reminders) {
+        logger.info(`Processing ${reminders.length} reminder(s) for user ${userId}`);
+
+        for (const reminder of reminders) {
+            try {
+                // Import dependencies dynamically
+                const { sendReminderNotification } = await import('../controllers/pushNotificationController.js');
+                const { emitToUser } = await import('../socket/socketController.js');
+
+                // Send push notifications to all user devices
+                await sendReminderNotification(
+                    reminder.userId,
+                    reminder.itemTitle,
+                    reminder.itemId,
+                    reminder.timestamp.getTime()
+                );
+
+                // Emit WebSocket event to trigger reminders on all connected devices
+                emitToUser(reminder.userId.toString(), 'reminder:trigger', {
+                    itemId: reminder.itemId,
+                    itemTitle: reminder.itemTitle,
+                    timestamp: reminder.timestamp,
+                    reminderData: {
+                        reminderVibrationEnabled: true,
+                        reminderSoundEnabled: true,
+                        reminderDisplayDoneButton: true,
+                        originalReminder: {
+                            itemId: reminder.itemId,
+                            itemTitle: reminder.itemTitle,
+                            timestamp: reminder.timestamp.getTime(),
+                            repeatOptions: reminder.repeatOptions
+                        }
+                    }
+                });
+
+                // Mark reminder as triggered (handles repeats and disabling)
+                await reminder.markTriggered();
+
+                logger.info('Cloud reminder processed successfully', {
+                    userId: reminder.userId,
+                    itemId: reminder.itemId,
+                    itemTitle: reminder.itemTitle,
+                    wasRepeating: !!reminder.repeatOptions,
+                    stillEnabled: reminder.enabled
+                });
+
+            } catch (reminderError) {
+                logger.error('Error processing cloud reminder:', {
+                    userId,
+                    itemId: reminder.itemId,
+                    error: reminderError.message
+                });
+            }
+        }
+    }
+
     getStatus() {
         return {
             isRunning: this.isRunning,
             isProcessing: this.isProcessing,
-            cronJobExists: !!this.cronJob
+            cronJobExists: !!this.cronJob,
+            lastCheckTime: this.lastCheckTime,
+            checkCount: this.checkCount,
+            processedCount: this.processedCount,
+            checkFrequency: '10 seconds'
         };
     }
 }
