@@ -96,21 +96,8 @@ export function setupSocketEvents(io) {
       emitToUser(userId, 'treeReplaced', treeData, socket.id);
     });
 
-    // Reminder relay events - just forward to all user's devices
-    socket.on('reminder:set', (reminderData) => {
-      console.log(`Relaying reminder:set for user ${userId}:`, reminderData);
-      emitToUser(userId, 'reminder:set', reminderData, socket.id);
-    });
-
-    socket.on('reminder:clear', (data) => {
-      console.log(`Relaying reminder:clear for user ${userId}:`, data);
-      emitToUser(userId, 'reminder:clear', data, socket.id);
-    });
-
-    socket.on('reminder:update', (reminderData) => {
-      console.log(`Relaying reminder:update for user ${userId}:`, reminderData);
-      emitToUser(userId, 'reminder:update', reminderData, socket.id);
-    });
+    // Reminder events are now handled by API routes (reminderRoutes.js) which emit socket events
+    // No need to relay reminder events here to avoid duplicates
 
     // Heartbeat mechanism handlers
     socket.on('ping', () => {

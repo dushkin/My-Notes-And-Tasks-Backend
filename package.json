@@ -1,6 +1,6 @@
 {
   "name": "my-notes-and-tasks-backend",
-  "version": "9.10.12",
+  "version": "9.10.13",
   "description": "",
   "main": "server.js",
   "type": "module",
