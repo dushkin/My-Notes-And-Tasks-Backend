@@ -88,8 +88,10 @@ router.put('/:itemId', [
     deviceId = null
   } = req.body;
 
-  // Validate timestamp is in the future
-  if (new Date(timestamp) <= new Date()) {
+  // Validate timestamp is in the future (allow 30 second grace period for network latency)
+  const now = new Date();
+  const gracePeriod = 30 * 1000; // 30 seconds in milliseconds
+  if (new Date(timestamp).getTime() <= now.getTime() - gracePeriod) {
     return res.status(400).json({
       success: false,
       error: 'Reminder timestamp must be in the future'
@@ -339,8 +341,10 @@ router.post('/bulk-import', [
     try {
       const { itemId, timestamp, itemTitle, repeatOptions = null } = reminderData;
       
-      // Skip reminders in the past
-      if (new Date(timestamp) <= new Date()) {
+      // Skip reminders in the past (allow 30 second grace period)
+      const now = new Date();
+      const gracePeriod = 30 * 1000; // 30 seconds in milliseconds
+      if (new Date(timestamp).getTime() <= now.getTime() - gracePeriod) {
         importResults.skipped++;
         continue;
       }
