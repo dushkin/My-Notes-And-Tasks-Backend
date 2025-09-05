@@ -268,13 +268,21 @@ router.post('/:itemId/trigger', [
     }
   });
 
-  // Emit socket event for real-time sync
+  // Emit socket events for real‑time sync
+  // Join the user's room on connection (see socketController).  Here we
+  // broadcast both `reminder:trigger` and `reminder:triggered` events for
+  // backward compatibility.  Some clients (e.g. older mobile apps) listen
+  // for `reminder:trigger`, while the new serverReminderService listens for
+  // `reminder:triggered`.  Sending both ensures all clients receive the
+  // notification.
   if (req.io) {
-    req.io.to(req.user.id).emit('reminder:triggered', {
+    const payload = {
       itemId: reminder.itemId,
       enabled: reminder.enabled,
       timestamp: reminder.timestamp
-    });
+    };
+    req.io.to(req.user.id).emit('reminder:trigger', payload);
+    req.io.to(req.user.id).emit('reminder:triggered', payload);
   }
 }));
 

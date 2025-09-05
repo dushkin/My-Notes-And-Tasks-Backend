@@ -273,8 +273,12 @@ class ReminderService {
                     reminder.timestamp.getTime()
                 );
 
-                // Emit WebSocket event to trigger reminders on all connected devices
-                emitToUser(reminder.userId.toString(), 'reminder:trigger', {
+                // Emit WebSocket events to trigger reminders on all connected devices.
+                // Send both `reminder:trigger` and `reminder:triggered` events for
+                // compatibility with clients listening for either event.  The
+                // payload includes the itemId, title and timestamp.  We avoid
+                // including functions or non‑serializable values here.
+                const triggerPayload = {
                     itemId: reminder.itemId,
                     itemTitle: reminder.itemTitle,
                     timestamp: reminder.timestamp,
@@ -289,6 +293,14 @@ class ReminderService {
                             repeatOptions: reminder.repeatOptions
                         }
                     }
+                };
+
+                emitToUser(reminder.userId.toString(), 'reminder:trigger', triggerPayload);
+                emitToUser(reminder.userId.toString(), 'reminder:triggered', {
+                    itemId: reminder.itemId,
+                    enabled: reminder.enabled,
+                    timestamp: reminder.timestamp,
+                    itemTitle: reminder.itemTitle
                 });
 
                 // Mark reminder as triggered (handles repeats and disabling)

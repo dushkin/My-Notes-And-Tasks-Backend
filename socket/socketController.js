@@ -40,6 +40,19 @@ export function setupSocketEvents(io) {
 
     console.log("✅ Accepted socket connection", { userId, socketId: socket.id });
 
+    // Join a room for this user.  The server uses rooms keyed by userId
+    // to broadcast events to all of a user's devices.  Without joining
+    // the room here, calls like `io.to(userId).emit(...)` from HTTP
+    // routes will not deliver anything because no socket has joined
+    // that room.  See reminderRoutes for usage.  This fixes cross‑device
+    // reminder syncing by ensuring each connected socket is part of its
+    // user's room.
+    try {
+      socket.join(userId);
+    } catch (err) {
+      console.error(`⚠️ Failed to join room for user ${userId}:`, err);
+    }
+
     // Initialize user's socket array if it doesn't exist
     if (!connectedUsers.has(userId)) {
       connectedUsers.set(userId, []);
