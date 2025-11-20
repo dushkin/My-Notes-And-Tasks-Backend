@@ -180,10 +180,12 @@ export const createItem = catchAsync(async (req, res, next) => {
 });
 
 export const updateItem = catchAsync(async (req, res, next) => {
+    console.log('🔴🔴🔴 UPDATE ITEM ENDPOINT HIT 🔴🔴🔴');
     const startTime = Date.now();
     const userId = req.user.id;
     const { itemId } = req.params;
     const updates = req.body;
+    console.log(`🔴 userId: ${userId}, itemId: ${itemId}, updates:`, updates);
     logger.info('Attempting to update item', {
         userId,
         itemId,
