@@ -207,6 +207,25 @@ export const updateItem = catchAsync(async (req, res, next) => {
     let currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
     logger.debug('Current tree before update attempt', { userId, itemId, treeSize: currentTree.length });
 
+    // Debug: Log all item IDs in the tree to diagnose search issues
+    const getAllItemIds = (items, depth = 0) => {
+        const ids = [];
+        if (!Array.isArray(items)) return ids;
+        items.forEach(item => {
+            if (item && item.id) {
+                ids.push({ id: item.id, label: item.label, type: item.type, depth });
+                if (item.type === 'folder' && Array.isArray(item.children)) {
+                    ids.push(...getAllItemIds(item.children, depth + 1));
+                }
+            }
+        });
+        return ids;
+    };
+    const allIds = getAllItemIds(currentTree);
+    console.log(`🔍 [DEBUG] Tree contains ${allIds.length} items:`, allIds);
+    console.log(`🔍 [DEBUG] Looking for itemId: ${itemId}`);
+    console.log(`🔍 [DEBUG] Item exists in tree: ${allIds.some(i => i.id === itemId)}`);
+
     const beforeItemSearch = Date.now();
     // Pass 'notesTree' as path to enable mongoPath tracking for optimizations
     const originalItemSearchResult = findItemRecursive(currentTree, itemId, 'notesTree');
