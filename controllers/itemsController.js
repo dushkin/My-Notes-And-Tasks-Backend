@@ -196,6 +196,7 @@ export const updateItem = catchAsync(async (req, res, next) => {
     const user = await User.findById(userId);
     const userFetchTime = Date.now() - beforeUserFetch;
     logger.info('[TIMING] User fetch completed', { userId, duration: `${userFetchTime}ms` });
+    console.log(`⏱️ [TIMING] User fetch: ${userFetchTime}ms`);
 
     if (!user) {
         logger.warn('User not found for item update', { userId, itemId });
@@ -209,6 +210,7 @@ export const updateItem = catchAsync(async (req, res, next) => {
     const originalItemSearchResult = findItemRecursive(currentTree, itemId);
     const itemSearchTime = Date.now() - beforeItemSearch;
     logger.info('[TIMING] Item search completed', { userId, itemId, duration: `${itemSearchTime}ms` });
+    console.log(`⏱️ [TIMING] Item search: ${itemSearchTime}ms`);
 
     if (!originalItemSearchResult || !originalItemSearchResult.item) {
         logger.warn('Item not found for update', { userId, itemId });
@@ -226,6 +228,7 @@ export const updateItem = catchAsync(async (req, res, next) => {
     }
     const validationTime = Date.now() - beforeValidation;
     logger.info('[TIMING] Validation completed', { userId, itemId, duration: `${validationTime}ms` });
+    console.log(`⏱️ [TIMING] Validation: ${validationTime}ms`);
 
     // Enable version control for content updates
     const versionControlOptions = {
@@ -236,6 +239,7 @@ export const updateItem = catchAsync(async (req, res, next) => {
     const updateResult = updateItemInTree(currentTree, itemId, updates, versionControlOptions);
     const treeUpdateTime = Date.now() - beforeTreeUpdate;
     logger.info('[TIMING] Tree update in memory completed', { userId, itemId, duration: `${treeUpdateTime}ms` });
+    console.log(`⏱️ [TIMING] Tree update in memory: ${treeUpdateTime}ms`);
 
     // Handle version conflicts
     if (updateResult.conflict) {
@@ -281,6 +285,7 @@ export const updateItem = catchAsync(async (req, res, next) => {
     await user.save();
     const saveTime = Date.now() - beforeSave;
     logger.info('[TIMING] MongoDB save completed', { userId, itemId, duration: `${saveTime}ms` });
+    console.log(`⏱️ [TIMING] MongoDB save: ${saveTime}ms`);
 
     // Wrap socket emission in try-catch to prevent server crashes
     const beforeSocket = Date.now();
@@ -301,6 +306,7 @@ export const updateItem = catchAsync(async (req, res, next) => {
     }
     const socketTime = Date.now() - beforeSocket;
     logger.info('[TIMING] Socket emission completed', { userId, itemId, duration: `${socketTime}ms` });
+    console.log(`⏱️ [TIMING] Socket emission: ${socketTime}ms`);
 
     const totalTime = Date.now() - startTime;
     logger.info('[TIMING] ========== TOTAL UPDATE TIME ==========', {
@@ -316,6 +322,8 @@ export const updateItem = catchAsync(async (req, res, next) => {
             total: `${totalTime}ms`
         }
     });
+    console.log(`⏱️ [TIMING] ========== TOTAL UPDATE TIME: ${totalTime}ms ==========`);
+    console.log(`⏱️ [TIMING] Breakdown: userFetch=${userFetchTime}ms, itemSearch=${itemSearchTime}ms, validation=${validationTime}ms, treeUpdate=${treeUpdateTime}ms, mongoSave=${saveTime}ms, socketEmit=${socketTime}ms`);
 
     res.status(200).json(itemAfterInMemoryUpdate);
 });
