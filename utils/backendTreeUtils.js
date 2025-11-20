@@ -21,12 +21,14 @@ export function sortItems(items) {
     });
 }
 
-export function findItemRecursive(nodes, itemId) {
+export function findItemRecursive(nodes, itemId, path = 'notesTree') {
     if (!Array.isArray(nodes) || !itemId) return null;
-    for (const item of nodes) {
-        if (item.id === itemId) return { item, parentArray: nodes };
+    for (let i = 0; i < nodes.length; i++) {
+        const item = nodes[i];
+        const currentPath = `${path}.${i}`;
+        if (item.id === itemId) return { item, parentArray: nodes, mongoPath: currentPath };
         if (item.type === "folder" && Array.isArray(item.children)) {
-            const found = findItemRecursive(item.children, itemId);
+            const found = findItemRecursive(item.children, itemId, `${currentPath}.children`);
             if (found) return found;
         }
     }
