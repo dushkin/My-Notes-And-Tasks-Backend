@@ -213,8 +213,16 @@ export const updateItem = catchAsync(async (req, res, next) => {
     const itemSearchTime = Date.now() - beforeItemSearch;
     logger.info('[TIMING] Item search completed', { userId, itemId, duration: `${itemSearchTime}ms` });
     console.log(`⏱️ [TIMING] Item search: ${itemSearchTime}ms`);
+    console.log(`🔍 [DEBUG] Search result:`, {
+        found: !!originalItemSearchResult,
+        hasItem: !!originalItemSearchResult?.item,
+        hasMongoPath: !!originalItemSearchResult?.mongoPath,
+        mongoPath: originalItemSearchResult?.mongoPath,
+        itemId: originalItemSearchResult?.item?.id
+    });
 
     if (!originalItemSearchResult || !originalItemSearchResult.item) {
+        console.error(`❌ [ERROR] Item not found:`, { userId, itemId, treeSize: currentTree.length });
         logger.warn('Item not found for update', { userId, itemId });
         return next(new AppError('Item not found', 404));
     }
