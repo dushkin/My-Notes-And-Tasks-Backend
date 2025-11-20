@@ -195,11 +195,11 @@ export const updateItem = catchAsync(async (req, res, next) => {
     });
 
     const beforeUserFetch = Date.now();
-    // Only select the fields we need to reduce fetch time
-    const user = await User.findById(userId).select('notesTree').lean(false);
+    // Fetch full user document - encryption plugin needs all fields
+    const user = await User.findById(userId);
     const userFetchTime = Date.now() - beforeUserFetch;
     logger.info('[TIMING] User fetch completed', { userId, duration: `${userFetchTime}ms` });
-    console.log(`⏱️ [TIMING] User fetch: ${userFetchTime}ms (optimized with select)`);
+    console.log(`⏱️ [TIMING] User fetch: ${userFetchTime}ms`);
 
     if (!user) {
         logger.warn('User not found for item update', { userId, itemId });
