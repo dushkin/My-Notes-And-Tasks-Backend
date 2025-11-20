@@ -1,19 +1,10 @@
-// ============================================================================
-// CORE IMPORTS AND SETUP
-// ============================================================================
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import "dotenv/config";
 
-// ============================================================================
-// SOCKET IMPORTS
-// ============================================================================
 import { initSocketIO } from "./socketEvents.js";
 import { setupSocketEvents } from "./socket/socketController.js";
 
-// ============================================================================
-// INITIALIZATION AND ERROR HANDLING SETUP
-// ============================================================================
 console.log("🚀 Starting server.js...");
 
 // Import error handlers with proper error handling
@@ -31,9 +22,6 @@ const {
 setupProcessErrorHandlers();
 await initializeExceptionHandlers();
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
 
 /**
  * Initialize error handlers with proper error handling
@@ -85,9 +73,6 @@ function setupProcessErrorHandlers() {
     });
 }
 
-// ============================================================================
-// MODULE IMPORTS
-// ============================================================================
 
 // Import core modules with error handling
 let express,
@@ -724,6 +709,13 @@ try {
     console.log("👤 Registering account routes...");
     app.use("/api/account", authMiddleware, accountRoutes);
 
+    console.log("🔔 Registering reminders routes...");
+    app.use("/api/reminders", authMiddleware, (req, res, next) => {
+        // Socket.IO will be available after server starts
+        req.io = app.get('io');
+        next();
+    }, reminderRoutes);
+
     console.log("💳 Registering paddle webhook routes...");
     app.use("/api/paddle", paddleWebhook);
 
@@ -736,8 +728,6 @@ try {
         logger.info("Sync routes not available, skipping registration");
     }
 
-    console.log("🔔 Registering reminders routes...");
-    app.use("/api/reminders", authMiddleware, reminderRoutes);
 
     if (process.env.ENABLE_ADMIN_ROUTES !== "false") {
         console.log("🔧 Registering admin routes...");
@@ -864,6 +854,9 @@ if (isMainModule) {
 
             const httpServer = createServer(app);
             const io = new SocketIOServer(httpServer, { cors: corsOptions });
+            
+            // Make Socket.IO available to routes
+            app.set('io', io);
 
             // Initialize existing socket events (if you have them)
             if (typeof initSocketIO === 'function') {
@@ -902,6 +895,8 @@ if (isMainModule) {
             if (typeof setupSocketEvents === 'function') {
                 setupSocketEvents(io);
             }
+
+            // Socket.IO reference is now available for reminder routes registered earlier
 
             io.on("connection", (socket) => {
                 console.log("🔗 Client connected:", socket.id, "User:", socket.userId);

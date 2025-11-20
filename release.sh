@@ -48,6 +48,10 @@ git commit -m "Release v$VERSION"
 echo "🏷️  Creating tag v$VERSION"
 git tag "v$VERSION"
 
+# Push dev branch with new commit
+echo "⬆️  Pushing dev branch"
+git push origin dev
+
 # Push dev to main
 echo "⬆️  Pushing dev to main"
 git push origin dev:main

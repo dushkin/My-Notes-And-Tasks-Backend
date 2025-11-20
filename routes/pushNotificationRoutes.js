@@ -131,8 +131,15 @@ router.post("/subscribe", syncValidationChains.pushSubscribe, async (req, res) =
                 userId: req.user.id,
                 error: legacyModelError.message
             });
-            // This is more critical since this was the working model
-            throw legacyModelError;
+            // If it's a duplicate key error (E11000), don't fail the request since we have the new model
+            if (legacyModelError.message && legacyModelError.message.includes('E11000')) {
+                logger.warn('Duplicate key error in legacy model, but subscription saved in new model - continuing', {
+                    userId: req.user.id
+                });
+            } else {
+                // This is more critical since this was the working model
+                throw legacyModelError;
+            }
         }
 
         logger.info('Push subscription created successfully', {

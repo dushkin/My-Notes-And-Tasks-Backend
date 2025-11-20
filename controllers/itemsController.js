@@ -180,18 +180,23 @@ export const createItem = catchAsync(async (req, res, next) => {
 });
 
 export const updateItem = catchAsync(async (req, res, next) => {
+    const startTime = Date.now();
     const userId = req.user.id;
     const { itemId } = req.params;
     const updates = req.body;
-    logger.info('Attempting to update item', { 
-        userId, 
-        itemId, 
+    logger.info('Attempting to update item', {
+        userId,
+        itemId,
         updates: Object.keys(updates),
         contentType: updates.content ? typeof updates.content : 'undefined',
         contentPreview: updates.content ? updates.content.substring(0, 100) : 'undefined'
     });
 
+    const beforeUserFetch = Date.now();
     const user = await User.findById(userId);
+    const userFetchTime = Date.now() - beforeUserFetch;
+    logger.info('[TIMING] User fetch completed', { userId, duration: `${userFetchTime}ms` });
+
     if (!user) {
         logger.warn('User not found for item update', { userId, itemId });
         return next(new AppError('User not found', 404));
@@ -200,12 +205,18 @@ export const updateItem = catchAsync(async (req, res, next) => {
     let currentTree = Array.isArray(user.notesTree) ? user.notesTree : [];
     logger.debug('Current tree before update attempt', { userId, itemId, treeSize: currentTree.length });
 
+    const beforeItemSearch = Date.now();
     const originalItemSearchResult = findItemRecursive(currentTree, itemId);
+    const itemSearchTime = Date.now() - beforeItemSearch;
+    logger.info('[TIMING] Item search completed', { userId, itemId, duration: `${itemSearchTime}ms` });
+
     if (!originalItemSearchResult || !originalItemSearchResult.item) {
         logger.warn('Item not found for update', { userId, itemId });
         return next(new AppError('Item not found', 404));
     }
     const { item: originalItem, parentArray: originalSiblings } = originalItemSearchResult;
+
+    const beforeValidation = Date.now();
     if (updates.hasOwnProperty('label') && typeof updates.label === 'string') {
         const trimmedNewLabel = updates.label.trim();
         if (trimmedNewLabel !== originalItem.label && hasSiblingWithName(originalSiblings || [], trimmedNewLabel, itemId)) {
@@ -213,14 +224,19 @@ export const updateItem = catchAsync(async (req, res, next) => {
             return next(new AppError(`An item named "${trimmedNewLabel}" already exists in this location`, 400));
         }
     }
+    const validationTime = Date.now() - beforeValidation;
+    logger.info('[TIMING] Validation completed', { userId, itemId, duration: `${validationTime}ms` });
 
     // Enable version control for content updates
     const versionControlOptions = {
         enforceVersionControl: updates.hasOwnProperty('content') || updates.hasOwnProperty('expectedVersion')
     };
-    
+
+    const beforeTreeUpdate = Date.now();
     const updateResult = updateItemInTree(currentTree, itemId, updates, versionControlOptions);
-    
+    const treeUpdateTime = Date.now() - beforeTreeUpdate;
+    logger.info('[TIMING] Tree update in memory completed', { userId, itemId, duration: `${treeUpdateTime}ms` });
+
     // Handle version conflicts
     if (updateResult.conflict) {
         logger.warn('Version conflict detected during item update', {
@@ -260,9 +276,14 @@ export const updateItem = catchAsync(async (req, res, next) => {
     user.notesTree = updatedTreeInMemory;
     user.markModified('notesTree');
     logger.debug('notesTree marked as modified, attempting save', { userId, itemId });
+
+    const beforeSave = Date.now();
     await user.save();
-    
+    const saveTime = Date.now() - beforeSave;
+    logger.info('[TIMING] MongoDB save completed', { userId, itemId, duration: `${saveTime}ms` });
+
     // Wrap socket emission in try-catch to prevent server crashes
+    const beforeSocket = Date.now();
     try {
         console.log(`🔄 Attempting to emit itemUpdated for user ${user._id.toString()}:`, {
             itemId: itemAfterInMemoryUpdate.id,
@@ -278,8 +299,24 @@ export const updateItem = catchAsync(async (req, res, next) => {
         });
         console.error(`❌ Socket emission failed for itemUpdated:`, socketError);
     }
-    
-    logger.info('Item updated successfully', { userId, itemId });
+    const socketTime = Date.now() - beforeSocket;
+    logger.info('[TIMING] Socket emission completed', { userId, itemId, duration: `${socketTime}ms` });
+
+    const totalTime = Date.now() - startTime;
+    logger.info('[TIMING] ========== TOTAL UPDATE TIME ==========', {
+        userId,
+        itemId,
+        breakdown: {
+            userFetch: `${userFetchTime}ms`,
+            itemSearch: `${itemSearchTime}ms`,
+            validation: `${validationTime}ms`,
+            treeUpdate: `${treeUpdateTime}ms`,
+            mongoSave: `${saveTime}ms`,
+            socketEmit: `${socketTime}ms`,
+            total: `${totalTime}ms`
+        }
+    });
+
     res.status(200).json(itemAfterInMemoryUpdate);
 });
 

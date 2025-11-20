@@ -55,15 +55,23 @@ export const subscribe = catchAsync(async (req, res, next) => {
 /**
  * Send reminder notification to user
  */
-export const sendReminderNotification = async (userId, itemTitle, itemId, reminderTime) => {
+export const sendReminderNotification = async (userId, itemTitle, itemId, reminderTime, options = {}) => {
     try {
-        const user = await User.findById(userId).select('pushSubscriptions').lean();
+        const user = await User.findById(userId).select('pushSubscriptions settings').lean();
         if (!user || !user.pushSubscriptions || user.pushSubscriptions.length === 0) {
             logger.warn('No push subscriptions found for reminder notification', { userId, itemId });
             return { success: false, message: 'No subscriptions found' };
         }
 
-        const payload = pushNotificationService.createReminderPayload(itemTitle, itemId, reminderTime);
+        // Merge user settings with passed options
+        const reminderOptions = {
+            reminderDisplayDoneButton: user.settings?.reminderDisplayDoneButton ?? true,
+            reminderVibrationEnabled: user.settings?.reminderVibrationEnabled ?? true,
+            reminderSoundEnabled: user.settings?.reminderSoundEnabled ?? true,
+            ...options
+        };
+
+        const payload = pushNotificationService.createReminderPayload(itemTitle, itemId, reminderTime, reminderOptions);
         const result = await pushNotificationService.sendNotificationToMultiple(user.pushSubscriptions, payload);
 
         if (result.invalidSubscriptions && result.invalidSubscriptions.length > 0) {

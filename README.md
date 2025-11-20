@@ -1,64 +1,168 @@
 # Notes & Tasks - Backend API
 
-This repository contains the source code for the backend REST API that powers the [Notes & Tasks application](https://github.com/dushkin/My-Notes-And-Tasks-Backend). It is a secure, robust, and scalable service built with Node.js, Express, and MongoDB.
+This repository contains the source code for the backend REST API that powers the [Notes & Tasks application](https://github.com/dushkin/My-Notes-and-Tasks). It is a secure, robust, and scalable service built with Node.js, Express, and MongoDB.
 
 **[View API Documentation](http://localhost:5001/api-docs)** (while running locally)
 
 ---
 
-## Key Features
+## 🔧 **Backend Features & Capabilities**
 
-* [cite_start]**Secure JWT Authentication:** Implements a robust authentication strategy using signed JSON Web Tokens (JWT) with both access and refresh tokens for enhanced security. [cite_start]Passwords are never stored in plaintext and are securely hashed using `bcrypt`.
-* [cite_start]**Automated API Documentation:** The entire API is documented using `swagger-jsdoc`. [cite_start]When the server is running, you can access an interactive Swagger UI to explore and test all endpoints.
-* **Advanced Security Middleware:** The application is hardened with multiple layers of security, including:
-    * [cite_start]`helmet` for protection against common web vulnerabilities.
-    * [cite_start]Rate limiting to prevent brute-force attacks on authentication and other endpoints.
-    * [cite_start]`cors` for configurable Cross-Origin Resource Sharing.
-    * [cite_start]Input sanitization to protect against NoSQL injection and XSS attacks.
-* [cite_start]**Secure Image Uploads:** Features a dedicated image upload endpoint that validates file types, limits sizes, and processes images with `sharp` to strip potentially malicious metadata before saving.
-* [cite_start]**Automated Background Jobs:** Uses `node-cron` to run scheduled tasks for system maintenance, such as:
-    * [cite_start]Cleaning up orphaned image files that are no longer referenced in any notes.
-    * [cite_start]Periodically purging expired and revoked refresh tokens from the database.
-* [cite_start]**Comprehensive Logging & Error Handling:** Implements `winston` for detailed, level-based logging to both the console and log files (`error.log`, `combined.log`). [cite_start]Features a global error handling middleware to ensure all errors are caught and logged consistently.
+### **Authentication & Security**
+- **JWT-based Authentication**: Secure token-based authentication system with access and refresh tokens for enhanced security
+- **Password Security**: Passwords are securely hashed using `bcrypt` with salt
+- **Rate Limiting**: Protection against brute-force attacks on authentication and other key endpoints
+- **Security Headers**: `helmet` implementation for protection against common web vulnerabilities
+- **Input Sanitization**: Protection against NoSQL injection and XSS attacks using express-mongo-sanitize and xss-clean
+- **CORS Configuration**: Configurable Cross-Origin Resource Sharing for secure API access
+- **Data Encryption**: Field-level encryption for sensitive user data using mongoose-field-encryption
 
-## Technology Stack
+### **RESTful API Architecture**
+- **Comprehensive API Endpoints**:
+  - **Authentication Routes**: Login, register, refresh token, logout, password reset
+  - **Items Management**: Full CRUD operations for notes, tasks, and folders
+  - **Image Upload & Management**: Secure file upload with processing
+  - **User Account Management**: Profile updates, account deletion, subscription management
+  - **Synchronization**: Real-time data sync endpoints
+  - **Admin Functionality**: User management, analytics, system monitoring
+  - **Push Notifications**: Device registration and notification delivery
+- **Swagger Documentation**: Interactive API documentation with OpenAPI specification
+- **Postman Collection**: Ready-to-use API testing collection included
 
-* [cite_start]**Framework:** Express.js 
-* [cite_start]**Database:** MongoDB with Mongoose 
-* [cite_start]**Authentication:** JWT (jsonwebtoken), bcrypt 
-* [cite_start]**Security:** Helmet, express-rate-limit, CORS, express-mongo-sanitize, hpp, xss-clean 
-* [cite_start]**API Documentation:** Swagger (swagger-jsdoc, swagger-ui-express) 
-* [cite_start]**File Handling:** Multer, Sharp 
-* [cite_start]**Logging:** Winston 
-* [cite_start]**Scheduled Tasks:** node-cron 
+### **Data Models & Database**
+- **MongoDB Integration**: Flexible NoSQL database with Mongoose ODM for scalable data storage
+- **Hierarchical Data Structure**: Efficient storage and retrieval of nested notes, tasks, and folders
+- **Data Models**:
+  - **User Accounts**: Secure user management with encrypted sensitive data
+  - **Items Structure**: Notes, tasks, and folders with parent-child relationships
+  - **Refresh Tokens**: Secure token management with automatic cleanup
+  - **Device Management**: Push notification device registration
+  - **Subscription Tracking**: Payment and subscription status management
+- **Data Validation**: Express-validator for comprehensive input validation and sanitization
 
-## Project Setup
+### **File Management & Security**
+- **Secure Image Uploads**:
+  - File type validation and size limits for security
+  - Multer middleware for multipart form handling
+  - Sharp image processing for metadata stripping and optimization
+  - Virus scanning integration (ClamAV) for malicious content detection
+- **Automated File Cleanup**: Cron jobs for removing orphaned and unused files
+- **Organized Storage**: Systematic file organization with proper naming conventions
 
-*(These instructions are based on your project's `package.json` and file structure)*
+### **Push Notifications & Real-time Features**
+- **Web Push Notifications**: Browser-based push notification support
+- **Firebase Cloud Messaging (FCM)**: Mobile push notification delivery for Android apps
+- **Socket.io Integration**: Real-time communication capabilities for live updates
+- **Device Management**: Comprehensive device registration and subscription handling
+- **Notification Scheduling**: Task reminder notifications with flexible scheduling
 
-1.  **Install Dependencies:**
+### **Payment & Subscription Management**
+- **Paddle Integration**: Secure payment processing with webhook handling
+- **Subscription Lifecycle**: Automated subscription management and billing
+- **Revenue Tracking**: Payment analytics and subscription metrics
+- **Beta Access Control**: Feature flags and beta user management
+
+### **System Maintenance & Monitoring**
+- **Automated Background Tasks**:
+  - Scheduled cleanup of expired refresh tokens
+  - Orphaned file removal and storage optimization
+  - System health monitoring and alerts
+- **Comprehensive Logging**:
+  - Winston logging framework with multiple log levels
+  - Error logging to files (error.log, combined.log)
+  - Structured logging for easy monitoring and debugging
+- **Health Monitoring**: Heartbeat endpoints for system status and uptime tracking
+
+### **Administrative Features**
+- **Admin Panel Endpoints**: Complete administrative user and system management
+- **User Analytics**: Detailed user activity, engagement, and usage statistics
+- **System Metrics**: Performance monitoring, API usage, and resource utilization
+- **Beta Testing Support**: Beta user management, feature flags, and A/B testing capabilities
+
+### **Testing & Quality Assurance**
+- **Comprehensive Test Suite**:
+  - Jest unit tests for individual components and functions
+  - Integration tests for API endpoints and database operations
+  - Supertest for HTTP endpoint testing
+  - MongoDB Memory Server for isolated test environments
+- **Test Coverage**: Detailed code coverage reporting and metrics
+- **Continuous Integration**: Automated testing with GitHub Actions
+
+---
+
+## 🛠 **Technology Stack**
+
+- **Framework**: Express.js 4.21.1 for robust web application framework
+- **Database**: MongoDB with Mongoose 8.14.1 for flexible data modeling
+- **Authentication**: JWT (jsonwebtoken) with bcrypt for secure user authentication
+- **Security**: Helmet, express-rate-limit, CORS, express-mongo-sanitize, hpp, xss-clean
+- **API Documentation**: Swagger (swagger-jsdoc, swagger-ui-express) for interactive documentation
+- **File Handling**: Multer for uploads, Sharp for image processing
+- **Push Notifications**: Firebase Admin SDK, web-push for browser notifications
+- **Logging**: Winston for structured logging and monitoring
+- **Scheduled Tasks**: node-cron for background job management
+- **Payment Processing**: Paddle webhook integration
+- **Testing**: Jest, Supertest, MongoDB Memory Server
+
+---
+
+## 📋 **Prerequisites**
+
+- **Node.js**: Version 14 or higher
+- **npm** (or Yarn)
+- **MongoDB**: Running instance (local or cloud-based like MongoDB Atlas)
+
+---
+
+## 🚀 **Project Setup**
+
+1. **Clone the repository:**
+    ```bash
+    git clone https://github.com/dushkin/My-Notes-and-Tasks-Backend.git
+    cd My-Notes-and-Tasks-Backend
+    ```
+
+2. **Install dependencies:**
     ```bash
     npm install
     ```
 
-2.  **Create Environment File:**
-    Create a `.env` file in the root directory. You can copy the contents of `.env.example` if one exists, or create it from scratch with the following required variables:
+3. **Create environment file:**
+    Create a `.env` file in the root directory with the following required variables:
 
     ```env
-    # The connection string for your MongoDB database
+    # Database connection
     MONGODB_URI=mongodb://localhost:27017/MyNotesAppDB
 
-    # A strong, secret string for signing JWTs
+    # JWT configuration
     JWT_SECRET=your_super_secret_jwt_key_here
+    JWT_EXPIRES_IN=15m
+    REFRESH_TOKEN_EXPIRES_IN=7d
 
-    # The port for the backend server to run on
+    # Server configuration
     PORT=5001
+    NODE_ENV=development
 
-    # Comma-separated list of allowed origins for the frontend app
+    # CORS configuration
     ALLOWED_ORIGINS=http://localhost:5173
+
+    # File upload limits
+    MAX_FILE_SIZE=5242880
+    UPLOAD_PATH=./uploads
+
+    # Push notification keys (optional)
+    VAPID_PUBLIC_KEY=your_vapid_public_key
+    VAPID_PRIVATE_KEY=your_vapid_private_key
+    VAPID_EMAIL=your_email@domain.com
+
+    # Firebase configuration (optional, for FCM)
+    FIREBASE_PROJECT_ID=your_firebase_project_id
+
+    # Payment processing (optional)
+    PADDLE_WEBHOOK_SECRET=your_paddle_webhook_secret
     ```
 
-3.  **Run the Server:**
+4. **Start the server:**
     ```bash
     # For development with auto-reloading
     npm run dev
@@ -66,8 +170,93 @@ This repository contains the source code for the backend REST API that powers th
     # For production
     npm start
     ```
-The server will start on the port defined in your `.env` file (e.g., 5001).
 
-## License
+The server will start on the port defined in your `.env` file (default: 5001).
+
+---
+
+## 📚 **API Documentation**
+
+### **Interactive Documentation**
+Once the server is running, access the comprehensive Swagger documentation at:
+**http://localhost:5001/api-docs**
+
+### **Postman Collection**
+A complete Postman collection is included in the repository (`Notes_Tasks_API.postman_collection.json`) with:
+- Pre-configured requests for all endpoints
+- Environment variables for easy testing
+- Authentication token management
+- Example request/response data
+
+### **Key API Endpoints**
+
+#### **Authentication**
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User authentication
+- `POST /api/auth/refresh` - Token refresh
+- `POST /api/auth/logout` - User logout
+
+#### **Items Management**
+- `GET /api/items/tree` - Get complete hierarchical structure
+- `POST /api/items` - Create new item (root level)
+- `POST /api/items/:parentId` - Create item under parent
+- `PATCH /api/items/:itemId` - Update item properties
+- `DELETE /api/items/:itemId` - Delete item and children
+
+#### **File Management**
+- `POST /api/images/upload` - Secure image upload
+- `GET /api/images/:filename` - Retrieve uploaded images
+- `DELETE /api/images/:filename` - Delete uploaded images
+
+#### **User Management**
+- `GET /api/account/profile` - Get user profile
+- `PATCH /api/account/profile` - Update user profile
+- `DELETE /api/account` - Delete user account
+
+---
+
+## 🧪 **Testing**
+
+Run the comprehensive test suite:
+
+```bash
+# Run all tests
+npm test
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run only unit tests
+npm run test:unit
+
+# Run only integration tests
+npm run test:integration
+
+# Run tests in watch mode
+npm run test:watch
+```
+
+---
+
+## 🔗 **Related Repositories**
+
+- **Frontend Application**: [My-Notes-and-Tasks](https://github.com/dushkin/My-Notes-and-Tasks) - Complete React frontend with comprehensive feature overview
+- **Backend API**: [My-Notes-and-Tasks-Backend](https://github.com/dushkin/My-Notes-and-Tasks-Backend) (this repository)
+
+---
+
+## 📄 **License**
 
 This project is licensed under the **CC BY-ND 4.0 License**. See the `LICENSE` file for details.
+
+---
+
+## 👤 **Author**
+
+**TT** © 2025
+
+---
+
+## 🤝 **Contributing**
+
+Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on how to contribute to this project.
