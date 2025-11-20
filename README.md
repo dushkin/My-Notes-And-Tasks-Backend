@@ -260,3 +260,4 @@ This project is licensed under the **CC BY-ND 4.0 License**. See the `LICENSE` f
 ## 🤝 **Contributing**
 
 Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on how to contribute to this project.
+# Performance optimizations applied
