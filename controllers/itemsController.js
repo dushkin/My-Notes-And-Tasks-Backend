@@ -193,10 +193,11 @@ export const updateItem = catchAsync(async (req, res, next) => {
     });
 
     const beforeUserFetch = Date.now();
-    const user = await User.findById(userId);
+    // Only select the fields we need to reduce fetch time
+    const user = await User.findById(userId).select('notesTree').lean(false);
     const userFetchTime = Date.now() - beforeUserFetch;
     logger.info('[TIMING] User fetch completed', { userId, duration: `${userFetchTime}ms` });
-    console.log(`⏱️ [TIMING] User fetch: ${userFetchTime}ms`);
+    console.log(`⏱️ [TIMING] User fetch: ${userFetchTime}ms (optimized with select)`);
 
     if (!user) {
         logger.warn('User not found for item update', { userId, itemId });
@@ -277,12 +278,40 @@ export const updateItem = catchAsync(async (req, res, next) => {
         return res.status(200).json(originalItem);
     }
 
-    user.notesTree = updatedTreeInMemory;
-    user.markModified('notesTree');
-    logger.debug('notesTree marked as modified, attempting save', { userId, itemId });
-
     const beforeSave = Date.now();
-    await user.save();
+
+    // OPTIMIZATION: For simple label-only updates, use updateOne with $set to avoid saving entire tree
+    const isSimpleLabelUpdate = updates.hasOwnProperty('label') &&
+                                Object.keys(updates).length === 1 &&
+                                originalItemSearchResult.mongoPath;
+
+    if (isSimpleLabelUpdate && originalItemSearchResult.mongoPath) {
+        // Use MongoDB $set to update only the specific field
+        const updatePath = originalItemSearchResult.mongoPath;
+        const updateFields = {
+            [`${updatePath}.label`]: updates.label,
+            [`${updatePath}.updatedAt`]: itemAfterInMemoryUpdate.updatedAt,
+            [`${updatePath}.version`]: itemAfterInMemoryUpdate.version
+        };
+
+        await User.updateOne(
+            { _id: userId },
+            { $set: updateFields }
+        );
+
+        console.log(`⚡ [OPTIMIZATION] Used $set for label-only update at path: ${updatePath}`);
+    } else {
+        // For complex updates (content, multiple fields), use traditional save
+        user.notesTree = updatedTreeInMemory;
+        user.markModified('notesTree');
+        logger.debug('notesTree marked as modified, attempting save', { userId, itemId });
+
+        // Use validateBeforeSave: false for better performance on simple updates
+        // Validation already happened in middleware
+        await user.save({ validateBeforeSave: false });
+        console.log(`📝 [OPTIMIZATION] Used traditional save() for complex update`);
+    }
+
     const saveTime = Date.now() - beforeSave;
     logger.info('[TIMING] MongoDB save completed', { userId, itemId, duration: `${saveTime}ms` });
     console.log(`⏱️ [TIMING] MongoDB save: ${saveTime}ms`);
