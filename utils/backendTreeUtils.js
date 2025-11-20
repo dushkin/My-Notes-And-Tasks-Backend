@@ -21,14 +21,27 @@ export function sortItems(items) {
     });
 }
 
-export function findItemRecursive(nodes, itemId, path = 'notesTree') {
+export function findItemRecursive(nodes, itemId, path = null) {
     if (!Array.isArray(nodes) || !itemId) return null;
+
+    // Only build path if explicitly requested (when path is a string)
+    const shouldBuildPath = typeof path === 'string';
+
     for (let i = 0; i < nodes.length; i++) {
         const item = nodes[i];
-        const currentPath = `${path}.${i}`;
-        if (item.id === itemId) return { item, parentArray: nodes, mongoPath: currentPath };
+        const currentPath = shouldBuildPath ? `${path}.${i}` : null;
+
+        if (item.id === itemId) {
+            const result = { item, parentArray: nodes };
+            if (shouldBuildPath) {
+                result.mongoPath = currentPath;
+            }
+            return result;
+        }
+
         if (item.type === "folder" && Array.isArray(item.children)) {
-            const found = findItemRecursive(item.children, itemId, `${currentPath}.children`);
+            const childPath = shouldBuildPath ? `${currentPath}.children` : null;
+            const found = findItemRecursive(item.children, itemId, childPath);
             if (found) return found;
         }
     }

@@ -208,7 +208,8 @@ export const updateItem = catchAsync(async (req, res, next) => {
     logger.debug('Current tree before update attempt', { userId, itemId, treeSize: currentTree.length });
 
     const beforeItemSearch = Date.now();
-    const originalItemSearchResult = findItemRecursive(currentTree, itemId);
+    // Pass 'notesTree' as path to enable mongoPath tracking for optimizations
+    const originalItemSearchResult = findItemRecursive(currentTree, itemId, 'notesTree');
     const itemSearchTime = Date.now() - beforeItemSearch;
     logger.info('[TIMING] Item search completed', { userId, itemId, duration: `${itemSearchTime}ms` });
     console.log(`⏱️ [TIMING] Item search: ${itemSearchTime}ms`);
